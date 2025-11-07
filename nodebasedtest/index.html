@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Node-Based Editor</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="toolbar">
+        <h1>Node-Based Editor</h1>
+        <div class="toolbar-buttons">
+            <button id="addNumberNode" class="btn btn-primary">숫자 노드 추가</button>
+            <button id="addMathNode" class="btn btn-primary">수학 노드 추가</button>
+            <button id="addStringNode" class="btn btn-primary">문자열 노드 추가</button>
+            <button id="addPrintNode" class="btn btn-primary">출력 노드 추가</button>
+            <button id="runGraph" class="btn btn-success">실행</button>
+            <button id="clearAll" class="btn btn-danger">전체 삭제</button>
+        </div>
+    </div>
+    
+    <div class="canvas-container">
+        <canvas id="canvas"></canvas>
+        <div id="nodeContainer"></div>
+    </div>
+    
+    <div class="output-panel">
+        <h3>출력</h3>
+        <div id="output"></div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
