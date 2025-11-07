@@ -58,9 +58,19 @@ function MyToolbar() {
     fromNodeId: null,
   })
   const [nanobananaNodes, setNanobananaNodes] = useState<Map<string, { text: string; outputImageUrl: string | null; isLoading: boolean }>>(new Map())
-  const [imageNodes, setImageNodes] = useState<Map<string, { imageUrl: string | null }>>(new Map())
+  const [imageNodes, setImageNodes] = useState<Map<string, { 
+    imageUrl: string | null
+    materialImageUrl: string | null
+    materialImagePosition: { x: number; y: number }
+    materialImageSize: { width: number; height: number }
+  }>>(new Map())
+  const [draggingMaterial, setDraggingMaterial] = useState<{ nodeId: string; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null)
+  const [resizingMaterial, setResizingMaterial] = useState<{ nodeId: string; startX: number; startY: number; startWidth: number; startHeight: number } | null>(null)
+  const [selectedMaterialNodeId, setSelectedMaterialNodeId] = useState<string | null>(null)
   const [zoomLevel, setZoomLevel] = useState(1)
   const [isDarkMode, setIsDarkMode] = useState(false)
+  const [materialModalOpen, setMaterialModalOpen] = useState(false)
+  const [currentMaterialNodeId, setCurrentMaterialNodeId] = useState<string | null>(null)
 
   // 다크모드 감지
   useEffect(() => {
@@ -278,6 +288,150 @@ function MyToolbar() {
       clearInterval(interval)
     }
   }, [drawAllConnections, editor])
+
+  // 부자재 이미지 드래그 핸들러
+  useEffect(() => {
+    if (!draggingMaterial) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const imageNodeState = imageNodes.get(draggingMaterial.nodeId)
+      if (!imageNodeState) return
+
+      const nodeShape = editor.getShape(draggingMaterial.nodeId as any)
+      if (!nodeShape) return
+
+      const nodeWidth = (nodeShape as any).props?.w || 350
+      const nodeHeight = (nodeShape as any).props?.h || 400
+      const nodeScreenPos = editor.pageToScreen({ x: nodeShape.x, y: nodeShape.y })
+      
+      // 이미지 표시 영역의 실제 화면 크기 계산 (패딩 제외)
+      const imageAreaWidth = nodeWidth * zoomLevel - 24 // 패딩 12px * 2
+      const imageAreaHeight = (nodeHeight - 62) * zoomLevel - 24 // 패딩 12px * 2
+
+      // 마우스 위치를 컨테이너 기준 퍼센트로 변환
+      const containerX = nodeScreenPos.x + 12 * zoomLevel
+      const containerY = nodeScreenPos.y + 12 * zoomLevel
+      
+      const newX = ((e.clientX - containerX) / imageAreaWidth) * 100 - draggingMaterial.offsetX
+      const newY = ((e.clientY - containerY) / imageAreaHeight) * 100 - draggingMaterial.offsetY
+
+      // 경계 체크
+      const maxX = 100 - imageNodeState.materialImageSize.width
+      const maxY = 100 - imageNodeState.materialImageSize.height
+      
+      const clampedX = Math.max(0, Math.min(maxX, newX))
+      const clampedY = Math.max(0, Math.min(maxY, newY))
+
+      setImageNodes(prev => {
+        const updated = new Map(prev)
+        const current = prev.get(draggingMaterial.nodeId)
+        if (current) {
+          updated.set(draggingMaterial.nodeId, {
+            ...current,
+            materialImagePosition: { x: clampedX, y: clampedY }
+          })
+        }
+        return updated
+      })
+    }
+
+    const handleMouseUp = () => {
+      setDraggingMaterial(null)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [draggingMaterial, imageNodes, editor, zoomLevel])
+
+  // 부자재 이미지 리사이즈 핸들러
+  useEffect(() => {
+    if (!resizingMaterial) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const imageNodeState = imageNodes.get(resizingMaterial.nodeId)
+      if (!imageNodeState) return
+
+      const nodeShape = editor.getShape(resizingMaterial.nodeId as any)
+      if (!nodeShape) return
+
+      const nodeWidth = (nodeShape as any).props?.w || 350
+      const nodeHeight = (nodeShape as any).props?.h || 400
+      const nodeScreenPos = editor.pageToScreen({ x: nodeShape.x, y: nodeShape.y })
+      
+      // 이미지 표시 영역의 실제 화면 크기 계산
+      const imageAreaWidth = nodeWidth * zoomLevel - 24
+      const imageAreaHeight = (nodeHeight - 62) * zoomLevel - 24
+
+      const containerX = nodeScreenPos.x + 12 * zoomLevel
+      const containerY = nodeScreenPos.y + 12 * zoomLevel
+
+      // 리사이즈 핸들 위치 기준으로 크기 계산
+      const deltaX = ((e.clientX - resizingMaterial.startX) / imageAreaWidth) * 100
+      const deltaY = ((e.clientY - resizingMaterial.startY) / imageAreaHeight) * 100
+
+      const newWidth = Math.max(10, Math.min(100 - imageNodeState.materialImagePosition.x, resizingMaterial.startWidth + deltaX))
+      const newHeight = Math.max(10, Math.min(100 - imageNodeState.materialImagePosition.y, resizingMaterial.startHeight + deltaY))
+
+      // 비율 유지 (선택사항 - 필요시 주석 해제)
+      // const aspectRatio = resizingMaterial.startWidth / resizingMaterial.startHeight
+      // const newHeight = newWidth / aspectRatio
+
+      setImageNodes(prev => {
+        const updated = new Map(prev)
+        const current = prev.get(resizingMaterial.nodeId)
+        if (current) {
+          updated.set(resizingMaterial.nodeId, {
+            ...current,
+            materialImageSize: { width: newWidth, height: newHeight }
+          })
+        }
+        return updated
+      })
+    }
+
+    const handleMouseUp = () => {
+      setResizingMaterial(null)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [resizingMaterial, imageNodes, editor, zoomLevel])
+
+  // 프레임 외부 영역 클릭 시 부자재 선택 해제
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      // 이미지 노드 오버레이 영역 내부인지 확인
+      const isImageNodeOverlay = target.closest('[data-image-node-overlay]')
+      // 부자재 이미지나 리사이즈 핸들을 클릭한 경우는 제외
+      const isMaterialImage = target.closest('[data-material-image]')
+      const isResizeHandle = target.closest('[data-resize-handle]')
+      // 부자재 버튼을 클릭한 경우는 제외
+      const isMaterialButton = target.closest('[data-material-button]')
+      
+      // 이미지 노드 오버레이 외부를 클릭한 경우에만 선택 해제
+      // (부자재 이미지, 리사이즈 핸들, 부자재 버튼을 클릭한 경우는 제외)
+      if (!isImageNodeOverlay && !isMaterialImage && !isResizeHandle && !isMaterialButton) {
+        setSelectedMaterialNodeId(null)
+      }
+    }
+
+    // bubble phase에서 실행하여 onClick 이벤트가 먼저 처리되도록 함
+    document.addEventListener('click', handleDocumentClick)
+    return () => {
+      document.removeEventListener('click', handleDocumentClick)
+    }
+  }, [])
 
   // 노드 위치 변경 시 오버레이 위치 업데이트
   useEffect(() => {
@@ -574,7 +728,12 @@ function MyToolbar() {
       setNodeOverlays(prev => new Map(prev).set(nodeId, newNodeOverlay))
 
       // Initialize image node state
-      setImageNodes(prev => new Map(prev).set(nodeId, { imageUrl: null }))
+      setImageNodes(prev => new Map(prev).set(nodeId, { 
+        imageUrl: null, 
+        materialImageUrl: null,
+        materialImagePosition: { x: 0, y: 0 },
+        materialImageSize: { width: 100, height: 100 }
+      }))
     }, 50)
   }
 
@@ -755,14 +914,114 @@ function MyToolbar() {
     return null
   }
 
+  // 두 이미지를 합치는 함수 (스케치 이미지 + 부자재 이미지)
+  const combineImages = async (
+    sketchImageUrl: string | null,
+    materialImageUrl: string | null,
+    materialPosition: { x: number; y: number },
+    materialSize: { width: number; height: number }
+  ): Promise<string | null> => {
+    if (!sketchImageUrl) return null
+
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        reject(new Error('Canvas context를 가져올 수 없습니다.'))
+        return
+      }
+
+      const sketchImg = new Image()
+      sketchImg.crossOrigin = 'anonymous'
+      
+      sketchImg.onload = () => {
+        // 스케치 이미지 크기로 캔버스 설정
+        canvas.width = sketchImg.width
+        canvas.height = sketchImg.height
+
+        // 스케치 이미지 그리기 (배경)
+        ctx.drawImage(sketchImg, 0, 0)
+
+        // 부자재 이미지가 있으면 오버레이로 그리기
+        if (materialImageUrl) {
+          const materialImg = new Image()
+          materialImg.crossOrigin = 'anonymous'
+          
+          materialImg.onload = () => {
+            // 부자재 이미지의 실제 크기 계산 (퍼센트를 픽셀로 변환)
+            const materialWidth = (canvas.width * materialSize.width) / 100
+            const materialHeight = (canvas.height * materialSize.height) / 100
+            const materialX = (canvas.width * materialPosition.x) / 100
+            const materialY = (canvas.height * materialPosition.y) / 100
+
+            // 부자재 이미지 그리기
+            ctx.drawImage(materialImg, materialX, materialY, materialWidth, materialHeight)
+
+            // 합쳐진 이미지를 base64로 변환
+            canvas.toBlob((blob) => {
+              if (!blob) {
+                reject(new Error('이미지 합치기 실패'))
+                return
+              }
+              const reader = new FileReader()
+              reader.onloadend = () => {
+                const base64 = reader.result as string
+                // data:image/...;base64, 부분 제거
+                resolve(base64.split(',')[1])
+              }
+              reader.onerror = reject
+              reader.readAsDataURL(blob)
+            }, 'image/jpeg', 0.95)
+          }
+
+          materialImg.onerror = () => {
+            // 부자재 이미지 로드 실패 시 스케치 이미지만 반환
+            canvas.toBlob((blob) => {
+              if (!blob) {
+                reject(new Error('이미지 변환 실패'))
+                return
+              }
+              const reader = new FileReader()
+              reader.onloadend = () => {
+                const base64 = reader.result as string
+                resolve(base64.split(',')[1])
+              }
+              reader.onerror = reject
+              reader.readAsDataURL(blob)
+            }, 'image/jpeg', 0.95)
+          }
+
+          materialImg.src = materialImageUrl
+        } else {
+          // 부자재 이미지가 없으면 스케치 이미지만 반환
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              reject(new Error('이미지 변환 실패'))
+              return
+            }
+            const reader = new FileReader()
+            reader.onloadend = () => {
+              const base64 = reader.result as string
+              resolve(base64.split(',')[1])
+            }
+            reader.onerror = reject
+            reader.readAsDataURL(blob)
+          }, 'image/jpeg', 0.95)
+        }
+      }
+
+      sketchImg.onerror = () => {
+        reject(new Error('스케치 이미지 로드 실패'))
+      }
+
+      sketchImg.src = sketchImageUrl
+    })
+  }
+
   // Gemini API를 통한 이미지 생성
   const executeNanobanana = async (nodeId: string, imageUrl: string | null, prompt: string) => {
-    // API 키 확인
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY
-    if (!apiKey) {
-      alert('Gemini API 키가 설정되지 않았습니다. 환경 변수 VITE_GEMINI_API_KEY를 설정해주세요.')
-      return
-    }
+    // API 키
+    const apiKey = 'AIzaSyB_byYEb2AsNw6j9_jJL0oqC-uteE19eBk'
 
     // 로딩 상태 설정
     setNanobananaNodes(prev => {
@@ -776,17 +1035,38 @@ function MyToolbar() {
       // 이미지가 있으면 base64로 변환
       let imageBase64: string | null = null
       if (imageUrl) {
-        const imageBlob = await fetch(imageUrl).then(res => res.blob())
-        imageBase64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onloadend = () => {
-            const base64 = reader.result as string
-            // data:image/...;base64, 부분 제거
-            resolve(base64.split(',')[1])
+        // 연결된 이미지 노드에서 부자재 이미지 정보도 가져오기
+        const nodeConnections = getNodeConnections(nodeId)
+        const incomingConnections = nodeConnections.filter(conn => conn.type === 'incoming')
+        
+        let sketchImageUrl: string | null = imageUrl
+        let materialImageUrl: string | null = null
+        let materialPosition = { x: 0, y: 0 }
+        let materialSize = { width: 100, height: 100 }
+
+        if (incomingConnections.length > 0) {
+          const connectedNodeId = incomingConnections[0].targetNodeId
+          const connectedNode = editor.getShape(connectedNodeId as any)
+          
+          // 이미지 노드인지 확인
+          if (connectedNode && (connectedNode as any).props?.name === '이미지 노드') {
+            const imageNodeState = imageNodes.get(connectedNodeId)
+            if (imageNodeState) {
+              sketchImageUrl = imageNodeState.imageUrl
+              materialImageUrl = imageNodeState.materialImageUrl
+              materialPosition = imageNodeState.materialImagePosition
+              materialSize = imageNodeState.materialImageSize
+            }
           }
-          reader.onerror = reject
-          reader.readAsDataURL(imageBlob)
-        })
+        }
+
+        // 두 이미지를 합쳐서 base64로 변환
+        imageBase64 = await combineImages(
+          sketchImageUrl,
+          materialImageUrl,
+          materialPosition,
+          materialSize
+        )
       }
 
       // Gemini API 호출
@@ -1056,10 +1336,16 @@ function MyToolbar() {
       // 이미지 파일을 URL로 변환하여 저장
       const imageUrl = URL.createObjectURL(file)
       
-      // 이미지 노드 상태에 이미지 URL 저장
+      // 이미지 노드 상태에 이미지 URL 저장 (기존 materialImageUrl, position, size 유지)
       setImageNodes(prev => {
         const updated = new Map(prev)
-        updated.set(currentUploadNodeId, { imageUrl })
+        const current = prev.get(currentUploadNodeId) || { 
+          imageUrl: null, 
+          materialImageUrl: null,
+          materialImagePosition: { x: 0, y: 0 },
+          materialImageSize: { width: 100, height: 100 }
+        }
+        updated.set(currentUploadNodeId, { ...current, imageUrl })
         return updated
       })
 
@@ -1414,11 +1700,17 @@ function MyToolbar() {
           const nodeWidth = (nodeShape as any).props?.w || 350
           const nodeHeight = (nodeShape as any).props?.h || 400
           const nodeScreenPos = editor.pageToScreen({ x: nodeX, y: nodeY })
-          const imageNodeState = imageNodes.get(nodeId) || { imageUrl: null }
+          const imageNodeState = imageNodes.get(nodeId) || { 
+            imageUrl: null, 
+            materialImageUrl: null,
+            materialImagePosition: { x: 0, y: 0 },
+            materialImageSize: { width: 100, height: 100 }
+          }
 
         return (
           <div
             key={nodeId}
+            data-image-node-overlay
             style={{
               position: 'fixed',
               left: nodeScreenPos.x,
@@ -1437,6 +1729,7 @@ function MyToolbar() {
           >
             {/* 이미지 표시 영역 */}
             <div
+              data-image-area
               style={{
                 width: '100%',
                 height: 'calc(100% - 62px)',
@@ -1450,17 +1743,115 @@ function MyToolbar() {
                 overflow: 'hidden',
                 position: 'relative',
               }}
+              onClick={(e) => {
+                e.stopPropagation()
+                // 이미지 표시 영역 내부 클릭 시 선택 유지 (부자재 이미지를 다시 클릭하면 선택 해제)
+              }}
             >
               {imageNodeState.imageUrl ? (
-                <img
-                  src={imageNodeState.imageUrl}
-                  alt="Uploaded"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'contain',
-                  }}
-                />
+                <>
+                  {/* 스케치 이미지 (배경) */}
+                  <img
+                    src={imageNodeState.imageUrl}
+                    alt="Uploaded"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                    }}
+                  />
+                  {/* 부자재 이미지 (오버레이) - 드래그 및 리사이즈 가능 */}
+                  {imageNodeState.materialImageUrl && (
+                    <div
+                      data-material-image
+                      style={{
+                        position: 'absolute',
+                        left: `${imageNodeState.materialImagePosition.x}%`,
+                        top: `${imageNodeState.materialImagePosition.y}%`,
+                        width: `${imageNodeState.materialImageSize.width}%`,
+                        height: `${imageNodeState.materialImageSize.height}%`,
+                        zIndex: 2,
+                        cursor: draggingMaterial?.nodeId === nodeId ? 'grabbing' : (selectedMaterialNodeId === nodeId || draggingMaterial?.nodeId === nodeId || resizingMaterial?.nodeId === nodeId ? 'grab' : 'pointer'),
+                        border: (selectedMaterialNodeId === nodeId || draggingMaterial?.nodeId === nodeId || resizingMaterial?.nodeId === nodeId) ? '2px solid #007acc' : 'none',
+                        borderRadius: 4,
+                        boxSizing: 'border-box',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        // 클릭 시 항상 선택 상태로 설정
+                        setSelectedMaterialNodeId(nodeId)
+                      }}
+                      onMouseDown={(e) => {
+                        e.stopPropagation()
+                        // 리사이즈 핸들이 아닐 때만 드래그 시작
+                        if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'IMG') {
+                          const containerRect = e.currentTarget.parentElement?.getBoundingClientRect()
+                          if (containerRect) {
+                            const offsetX = ((e.clientX - containerRect.left) / containerRect.width) * 100 - imageNodeState.materialImagePosition.x
+                            const offsetY = ((e.clientY - containerRect.top) / containerRect.height) * 100 - imageNodeState.materialImagePosition.y
+                            setDraggingMaterial({
+                              nodeId,
+                              startX: e.clientX,
+                              startY: e.clientY,
+                              offsetX,
+                              offsetY,
+                            })
+                            setSelectedMaterialNodeId(nodeId)
+                          }
+                        }
+                      }}
+                    >
+                      <img
+                        src={imageNodeState.materialImageUrl}
+                        alt="Material"
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'contain',
+                          pointerEvents: 'none',
+                          userSelect: 'none',
+                        }}
+                        draggable={false}
+                      />
+                      {/* 리사이즈 핸들 (우측 하단) - 선택 상태일 때만 표시 */}
+                      {(selectedMaterialNodeId === nodeId || draggingMaterial?.nodeId === nodeId || resizingMaterial?.nodeId === nodeId) && (
+                        <div
+                          data-resize-handle
+                          style={{
+                            position: 'absolute',
+                            right: -6,
+                            bottom: -6,
+                            width: 12,
+                            height: 12,
+                            background: '#007acc',
+                            border: '2px solid white',
+                            borderRadius: '50%',
+                            cursor: 'nwse-resize',
+                            zIndex: 3,
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                          }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation()
+                            e.preventDefault()
+                            setResizingMaterial({
+                              nodeId,
+                              startX: e.clientX,
+                              startY: e.clientY,
+                              startWidth: imageNodeState.materialImageSize.width,
+                              startHeight: imageNodeState.materialImageSize.height,
+                            })
+                            setSelectedMaterialNodeId(nodeId)
+                          }}
+                        />
+                      )}
+                    </div>
+                  )}
+                </>
               ) : (
                 <span style={{ fontSize: '48px' }}>🖼️</span>
               )}
@@ -1497,6 +1888,77 @@ function MyToolbar() {
           </div>
         )
       })}
+
+      {/* 부자재 버튼 (이미지 노드에 스케치 이미지가 추가된 경우) */}
+      {Array.from(nodeOverlays.values())
+        .filter((node) => {
+          const nodeShape = editor.getShape(node.nodeId as any)
+          if (!nodeShape || (nodeShape as any).props?.name !== '이미지 노드') return false
+          const imageNodeState = imageNodes.get(node.nodeId)
+          return imageNodeState?.imageUrl !== null && imageNodeState?.imageUrl !== undefined
+        })
+        .map((node) => {
+          const nodeId = node.nodeId
+          const nodeShape = editor.getShape(nodeId as any)
+          if (!nodeShape) return null
+
+          const nodeX = nodeShape.x
+          const nodeY = nodeShape.y
+          const nodeWidth = (nodeShape as any).props?.w || 350
+          
+          // 프레임 상단 중앙 위치 계산 (프레임 외부 상단)
+          const frameTopCenter = editor.pageToScreen({ 
+            x: nodeX + nodeWidth / 2, 
+            y: nodeY 
+          })
+          
+          // 버튼 높이 (외부에 배치하기 위해 음수 오프셋)
+          const buttonHeight = 36
+          const buttonOffset = 8 // 프레임과의 간격
+
+          return (
+            <div
+              key={`material-${nodeId}`}
+              data-material-button
+              style={{
+                position: 'fixed',
+                left: frameTopCenter.x,
+                top: frameTopCenter.y - buttonHeight - buttonOffset,
+                transform: 'translate(-50%, 0)',
+                zIndex: 1101,
+                pointerEvents: 'auto',
+              }}
+            >
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setCurrentMaterialNodeId(nodeId)
+                  setMaterialModalOpen(true)
+                }}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderRadius: 6,
+                  background: '#000000',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#333333'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#000000'
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                부자재
+              </button>
+            </div>
+          )
+        })}
 
       {/* 나노바나나 실행 노드 오버레이 */}
       {Array.from(nanobananaNodes.keys()).map((nodeId) => {
@@ -1727,6 +2189,202 @@ function MyToolbar() {
         </svg>
       )}
 
+      {/* 부자재 모달 */}
+      {materialModalOpen && (
+        <>
+          {/* 모달 배경 (외부 클릭 시 닫기) */}
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1199,
+              pointerEvents: 'auto',
+              background: 'rgba(0, 0, 0, 0.5)',
+            }}
+            onClick={() => {
+              setMaterialModalOpen(false)
+              setCurrentMaterialNodeId(null)
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              zIndex: 1200,
+              pointerEvents: 'auto',
+              background: themeColors.background,
+              border: `1px solid ${themeColors.border}`,
+              borderRadius: 12,
+              padding: '24px',
+              boxShadow: isDarkMode ? '0 8px 24px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.2)',
+              minWidth: '400px',
+              maxWidth: '600px',
+              maxHeight: '80vh',
+              overflow: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ 
+              marginBottom: '20px', 
+              fontWeight: 'bold', 
+              fontSize: '18px', 
+              color: themeColors.text,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <span>부자재 선택</span>
+              <button
+                onClick={() => {
+                  setMaterialModalOpen(false)
+                  setCurrentMaterialNodeId(null)
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: themeColors.text,
+                  cursor: 'pointer',
+                  fontSize: '24px',
+                  lineHeight: 1,
+                  padding: 0,
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '4px',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = themeColors.buttonHover
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+              gap: '16px',
+            }}>
+              {/* button1.png */}
+              <div
+                style={{
+                  border: `1px solid ${themeColors.border}`,
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                  background: themeColors.surface,
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.05)'
+                  e.currentTarget.style.boxShadow = isDarkMode 
+                    ? '0 4px 12px rgba(0,0,0,0.5)' 
+                    : '0 4px 12px rgba(0,0,0,0.15)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+                onClick={() => {
+                  if (currentMaterialNodeId) {
+                    setImageNodes(prev => {
+                      const updated = new Map(prev)
+                      const current = prev.get(currentMaterialNodeId) || { 
+                        imageUrl: null, 
+                        materialImageUrl: null,
+                        materialImagePosition: { x: 0, y: 0 },
+                        materialImageSize: { width: 100, height: 100 }
+                      }
+                      // 기본 위치는 중앙, 기본 크기는 컨테이너의 50%
+                      updated.set(currentMaterialNodeId, { 
+                        ...current, 
+                        materialImageUrl: '/button1.png',
+                        materialImagePosition: { x: 25, y: 25 }, // 퍼센트 기준
+                        materialImageSize: { width: 50, height: 50 } // 퍼센트 기준
+                      })
+                      return updated
+                    })
+                  }
+                  setMaterialModalOpen(false)
+                  setCurrentMaterialNodeId(null)
+                }}
+              >
+                <img
+                  src="/button1.png"
+                  alt="Button 1"
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block',
+                  }}
+                />
+              </div>
+              
+              {/* button2.png */}
+              <div
+                style={{
+                  border: `1px solid ${themeColors.border}`,
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                  background: themeColors.surface,
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.05)'
+                  e.currentTarget.style.boxShadow = isDarkMode 
+                    ? '0 4px 12px rgba(0,0,0,0.5)' 
+                    : '0 4px 12px rgba(0,0,0,0.15)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+                onClick={() => {
+                  if (currentMaterialNodeId) {
+                    setImageNodes(prev => {
+                      const updated = new Map(prev)
+                      const current = prev.get(currentMaterialNodeId) || { 
+                        imageUrl: null, 
+                        materialImageUrl: null,
+                        materialImagePosition: { x: 0, y: 0 },
+                        materialImageSize: { width: 100, height: 100 }
+                      }
+                      // 기본 위치는 중앙, 기본 크기는 컨테이너의 50%
+                      updated.set(currentMaterialNodeId, { 
+                        ...current, 
+                        materialImageUrl: '/button2.png',
+                        materialImagePosition: { x: 25, y: 25 }, // 퍼센트 기준
+                        materialImageSize: { width: 50, height: 50 } // 퍼센트 기준
+                      })
+                      return updated
+                    })
+                  }
+                  setMaterialModalOpen(false)
+                  setCurrentMaterialNodeId(null)
+                }}
+              >
+                <img
+                  src="/button2.png"
+                  alt="Button 2"
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block',
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* 노드 생성 모달 */}
       {nodeCreationModal.show && (
         <>
@@ -1865,7 +2523,12 @@ function MyToolbar() {
                       screenY: nodeScreenPos.y,
                     }
                     setNodeOverlays(prev => new Map(prev).set(nodeId, newNodeOverlay))
-                    setImageNodes(prev => new Map(prev).set(nodeId, { imageUrl: null }))
+                    setImageNodes(prev => new Map(prev).set(nodeId, { 
+                      imageUrl: null, 
+                      materialImageUrl: null,
+                      materialImagePosition: { x: 0, y: 0 },
+                      materialImageSize: { width: 100, height: 100 }
+                    }))
 
                     // 연결 생성
                     if (nodeCreationModal.fromNodeId) {
