@@ -3262,7 +3262,7 @@ function MyToolbar() {
                   if (currentMaterialNodeId) {
                     try {
                       // PNG 이미지의 여백 제거
-                      const trimmedUrl = await trimImage('/button1.png')
+                      const trimmedUrl = await trimImage('/materials/button1.png')
 
                       setImageNodes(prev => {
                         const updated = new Map(prev)
@@ -3294,7 +3294,7 @@ function MyToolbar() {
                         }
                         const newMaterial: Material = {
                           id: `material-${Date.now()}-${Math.random()}`,
-                          url: '/button1.png',
+                          url: '/materials/button1.png',
                           position: { x: 25, y: 25 },
                           size: { width: 15, height: 15 } // 퍼센트 기준 (50px에 해당)
                         }
@@ -3311,7 +3311,7 @@ function MyToolbar() {
                 }}
               >
                 <img
-                  src="/button1.png"
+                  src="/materials/button1.png"
                   alt="Button 1"
                   style={{
                     width: '100%',
@@ -3345,7 +3345,7 @@ function MyToolbar() {
                   if (currentMaterialNodeId) {
                     try {
                       // PNG 이미지의 여백 제거
-                      const trimmedUrl = await trimImage('/button2.png')
+                      const trimmedUrl = await trimImage('/materials/button2.png')
 
                       setImageNodes(prev => {
                         const updated = new Map(prev)
@@ -3377,7 +3377,7 @@ function MyToolbar() {
                         }
                         const newMaterial: Material = {
                           id: `material-${Date.now()}-${Math.random()}`,
-                          url: '/button2.png',
+                          url: '/materials/button2.png',
                           position: { x: 25, y: 25 },
                           size: { width: 15, height: 15 } // 퍼센트 기준 (50px에 해당)
                         }
@@ -3394,8 +3394,174 @@ function MyToolbar() {
                 }}
               >
                 <img
-                  src="/button2.png"
+                  src="/materials/button2.png"
                   alt="Button 2"
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block',
+                  }}
+                />
+              </div>
+              
+              {/* button3.png */}
+              <div
+                style={{
+                  border: `1px solid ${themeColors.border}`,
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                  background: themeColors.surface,
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.05)'
+                  e.currentTarget.style.boxShadow = isDarkMode 
+                    ? '0 4px 12px rgba(0,0,0,0.5)' 
+                    : '0 4px 12px rgba(0,0,0,0.15)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+                onClick={async () => {
+                  if (currentMaterialNodeId) {
+                    try {
+                      // PNG 이미지의 여백 제거
+                      const trimmedUrl = await trimImage('/materials/button3.png')
+
+                      setImageNodes(prev => {
+                        const updated = new Map(prev)
+                        const current = prev.get(currentMaterialNodeId) || {
+                          imageUrl: null,
+                          materials: []
+                        }
+                        // 새로운 material 추가 (기본 위치는 중앙, 기본 크기는 50px)
+                        const newMaterial: Material = {
+                          id: `material-${Date.now()}-${Math.random()}`,
+                          url: trimmedUrl,
+                          position: { x: 25, y: 25 }, // 퍼센트 기준
+                          size: { width: 15, height: 15 } // 퍼센트 기준 (50px에 해당)
+                        }
+                        updated.set(currentMaterialNodeId, {
+                          ...current,
+                          materials: [...current.materials, newMaterial]
+                        })
+                        return updated
+                      })
+                    } catch (error) {
+                      console.error('이미지 여백 제거 실패:', error)
+                      // 여백 제거 실패 시 원본 이미지 사용
+                      setImageNodes(prev => {
+                        const updated = new Map(prev)
+                        const current = prev.get(currentMaterialNodeId) || {
+                          imageUrl: null,
+                          materials: []
+                        }
+                        const newMaterial: Material = {
+                          id: `material-${Date.now()}-${Math.random()}`,
+                          url: '/materials/button3.png',
+                          position: { x: 25, y: 25 },
+                          size: { width: 15, height: 15 } // 퍼센트 기준 (50px에 해당)
+                        }
+                        updated.set(currentMaterialNodeId, {
+                          ...current,
+                          materials: [...current.materials, newMaterial]
+                        })
+                        return updated
+                      })
+                    }
+                  }
+                  setMaterialModalOpen(false)
+                  setCurrentMaterialNodeId(null)
+                }}
+              >
+                <img
+                  src="/materials/button3.png"
+                  alt="Button 3"
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block',
+                  }}
+                />
+              </div>
+              
+              {/* button4.png */}
+              <div
+                style={{
+                  border: `1px solid ${themeColors.border}`,
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                  background: themeColors.surface,
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.05)'
+                  e.currentTarget.style.boxShadow = isDarkMode 
+                    ? '0 4px 12px rgba(0,0,0,0.5)' 
+                    : '0 4px 12px rgba(0,0,0,0.15)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+                onClick={async () => {
+                  if (currentMaterialNodeId) {
+                    try {
+                      // PNG 이미지의 여백 제거
+                      const trimmedUrl = await trimImage('/materials/button4.png')
+
+                      setImageNodes(prev => {
+                        const updated = new Map(prev)
+                        const current = prev.get(currentMaterialNodeId) || {
+                          imageUrl: null,
+                          materials: []
+                        }
+                        // 새로운 material 추가 (기본 위치는 중앙, 기본 크기는 50px)
+                        const newMaterial: Material = {
+                          id: `material-${Date.now()}-${Math.random()}`,
+                          url: trimmedUrl,
+                          position: { x: 25, y: 25 }, // 퍼센트 기준
+                          size: { width: 15, height: 15 } // 퍼센트 기준 (50px에 해당)
+                        }
+                        updated.set(currentMaterialNodeId, {
+                          ...current,
+                          materials: [...current.materials, newMaterial]
+                        })
+                        return updated
+                      })
+                    } catch (error) {
+                      console.error('이미지 여백 제거 실패:', error)
+                      // 여백 제거 실패 시 원본 이미지 사용
+                      setImageNodes(prev => {
+                        const updated = new Map(prev)
+                        const current = prev.get(currentMaterialNodeId) || {
+                          imageUrl: null,
+                          materials: []
+                        }
+                        const newMaterial: Material = {
+                          id: `material-${Date.now()}-${Math.random()}`,
+                          url: '/materials/button4.png',
+                          position: { x: 25, y: 25 },
+                          size: { width: 15, height: 15 } // 퍼센트 기준 (50px에 해당)
+                        }
+                        updated.set(currentMaterialNodeId, {
+                          ...current,
+                          materials: [...current.materials, newMaterial]
+                        })
+                        return updated
+                      })
+                    }
+                  }
+                  setMaterialModalOpen(false)
+                  setCurrentMaterialNodeId(null)
+                }}
+              >
+                <img
+                  src="/materials/button4.png"
+                  alt="Button 4"
                   style={{
                     width: '100%',
                     height: 'auto',
