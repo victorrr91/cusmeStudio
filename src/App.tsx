@@ -74,6 +74,7 @@ function MyToolbar() {
   const [sketchModalOpen, setSketchModalOpen] = useState(false)
   const [currentSketchNodeId, setCurrentSketchNodeId] = useState<string | null>(null)
   const [selectedSketchCategory, setSelectedSketchCategory] = useState<'men' | 'women'>('men')
+  const [selectedMenCategory, setSelectedMenCategory] = useState<string>('boatShoes')
   const [selectedWomenCategory, setSelectedWomenCategory] = useState<string>('boots')
 
   // 다크모드 감지
@@ -2309,6 +2310,39 @@ function MyToolbar() {
               </button>
             </div>
 
+            {/* 남성 카테고리 하위 선택 (남성 선택 시에만 표시) */}
+            {selectedSketchCategory === 'men' && (
+              <div style={{ 
+                display: 'flex', 
+                gap: '8px', 
+                marginBottom: '20px',
+                flexWrap: 'wrap',
+              }}>
+                {['boatShoes', 'boots', 'derby', 'etc', 'laceups&monks', 'loafers'].map((category) => (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedMenCategory(category)}
+                    style={{
+                      padding: '6px 12px',
+                      border: `1px solid ${selectedMenCategory === category ? '#007acc' : themeColors.border}`,
+                      borderRadius: 6,
+                      background: selectedMenCategory === category ? '#007acc' : themeColors.buttonBg,
+                      color: selectedMenCategory === category ? 'white' : themeColors.text,
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                    }}
+                  >
+                    {category === 'boatShoes' ? '보트슈즈' :
+                     category === 'boots' ? '부츠' :
+                     category === 'derby' ? '더비' :
+                     category === 'etc' ? '기타' :
+                     category === 'laceups&monks' ? '레이스업&몽크' :
+                     '로퍼'}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* 여성 카테고리 하위 선택 (여성 선택 시에만 표시) */}
             {selectedSketchCategory === 'women' && (
               <div style={{ 
@@ -2349,83 +2383,146 @@ function MyToolbar() {
               gap: '16px',
             }}>
               {selectedSketchCategory === 'men' ? (
-                // 남성 신발 이미지들
-                ['더비', '로퍼', '몽크스트랩', '보트슈즈', '옥스포드', '테슬로퍼', '플레인토'].map((name) => (
-                  <div
-                    key={name}
-                    style={{
-                      border: `1px solid ${themeColors.border}`,
-                      borderRadius: 8,
-                      overflow: 'hidden',
-                      cursor: 'pointer',
-                      background: themeColors.surface,
-                      transition: 'transform 0.2s, box-shadow 0.2s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'scale(1.05)'
-                      e.currentTarget.style.boxShadow = isDarkMode 
-                        ? '0 4px 12px rgba(0,0,0,0.5)' 
-                        : '0 4px 12px rgba(0,0,0,0.15)'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'scale(1)'
-                      e.currentTarget.style.boxShadow = 'none'
-                    }}
-                    onClick={() => {
-                      if (currentSketchNodeId) {
-                        const imagePath = `/sketchs/men/${name}.png`
-                        // 이미지 URL 생성 (public 폴더의 이미지 사용)
-                        setImageNodes(prev => {
-                          const updated = new Map(prev)
-                          const current = prev.get(currentSketchNodeId) || { 
-                            imageUrl: null, 
-                            materialImageUrl: null,
-                            materialImagePosition: { x: 0, y: 0 },
-                            materialImageSize: { width: 100, height: 100 }
+                // 남성 신발 이미지들 (선택된 카테고리에 따라)
+                (() => {
+                  // 실제 파일명을 정확히 반영 (영어 파일명)
+                  const menImageMap: Record<string, string[]> = {
+                    boatShoes: ['boatShoes.png', 'boatShoes2.png'],
+                    boots: ['boots.png', 'boots2.png', 'boots3.png', 'boots4.png'],
+                    derby: ['derby.png'],
+                    etc: ['derby.png', 'oxford.png', 'plaintoe.png', 'wingtip.png'],
+                    'laceups&monks': ['laceUp.png', 'monkStrap.png', 'monkStrap2.png', 'monkStrap3.png'],
+                    loafers: ['loafer.png', 'loafer2.png', 'loafer3.png', 'loafer4.png'],
+                  }
+                  
+                  const images = menImageMap[selectedMenCategory] || []
+                  
+                  // 이미지가 없으면 빈 배열 반환
+                  if (images.length === 0) {
+                    return []
+                  }
+                  
+                  // 파일명을 한글 표시명으로 변환
+                  const displayNameMap: Record<string, string> = {
+                    'boatShoes.png': '보트슈즈',
+                    'boatShoes2.png': '보트슈즈2',
+                    'boots.png': '부츠',
+                    'boots2.png': '부츠2',
+                    'boots3.png': '부츠3',
+                    'boots4.png': '부츠4',
+                    'derby.png': '더비',
+                    'oxford.png': '옥스포드',
+                    'plaintoe.png': '플레인토',
+                    'wingtip.png': '윙팁',
+                    'laceUp.png': '레이스업',
+                    'monkStrap.png': '몽크스트랩',
+                    'monkStrap2.png': '몽크스트랩2',
+                    'monkStrap3.png': '몽크스트랩3',
+                    'loafer.png': '로퍼',
+                    'loafer2.png': '로퍼2',
+                    'loafer3.png': '로퍼3',
+                    'loafer4.png': '로퍼4',
+                  }
+                  
+                  return images.map((imageName, i) => {
+                    const displayName = displayNameMap[imageName] || imageName.replace('.png', '')
+                    // 안정적인 key 생성 (카테고리 + 파일명 조합)
+                    const uniqueKey = `${selectedMenCategory}-${imageName}-${i}`
+                    return (
+                      <div
+                        key={uniqueKey}
+                        style={{
+                          border: `1px solid ${themeColors.border}`,
+                          borderRadius: 8,
+                          overflow: 'hidden',
+                          cursor: 'pointer',
+                          background: themeColors.surface,
+                          transition: 'transform 0.2s, box-shadow 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'scale(1.05)'
+                          e.currentTarget.style.boxShadow = isDarkMode 
+                            ? '0 4px 12px rgba(0,0,0,0.5)' 
+                            : '0 4px 12px rgba(0,0,0,0.15)'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'scale(1)'
+                          e.currentTarget.style.boxShadow = 'none'
+                        }}
+                        onClick={() => {
+                          if (currentSketchNodeId) {
+                            // URL 인코딩 적용 (특수문자 처리)
+                            const encodedCategory = encodeURIComponent(selectedMenCategory)
+                            const encodedImageName = encodeURIComponent(imageName)
+                            const imagePath = `/sketchs/men/${encodedCategory}/${encodedImageName}`
+                            // 이미지 URL 생성 (public 폴더의 이미지 사용)
+                            setImageNodes(prev => {
+                              const updated = new Map(prev)
+                              const current = prev.get(currentSketchNodeId) || { 
+                                imageUrl: null, 
+                                materialImageUrl: null,
+                                materialImagePosition: { x: 0, y: 0 },
+                                materialImageSize: { width: 100, height: 100 }
+                              }
+                              // 기존 이미지 URL 해제
+                              if (current.imageUrl && current.imageUrl.startsWith('blob:')) {
+                                URL.revokeObjectURL(current.imageUrl)
+                              }
+                              updated.set(currentSketchNodeId, { 
+                                ...current, 
+                                imageUrl: imagePath
+                              })
+                              return updated
+                            })
                           }
-                          // 기존 이미지 URL 해제
-                          if (current.imageUrl && current.imageUrl.startsWith('blob:')) {
-                            URL.revokeObjectURL(current.imageUrl)
-                          }
-                          updated.set(currentSketchNodeId, { 
-                            ...current, 
-                            imageUrl: imagePath
-                          })
-                          return updated
-                        })
-                      }
-                      setSketchModalOpen(false)
-                      setCurrentSketchNodeId(null)
-                    }}
-                  >
-                    <img
-                      src={`/sketchs/men/${name}.png`}
-                      alt={name}
-                      style={{
-                        width: '100%',
-                        height: 'auto',
-                        display: 'block',
-                      }}
-                      onError={(e) => {
-                        // 이미지 로드 실패 시 플레이스홀더 표시
-                        e.currentTarget.style.display = 'none'
-                        const parent = e.currentTarget.parentElement
-                        if (parent) {
-                          parent.innerHTML = `<div style="padding: 40px; text-align: center; color: ${themeColors.textSecondary}">${name}</div>`
-                        }
-                      }}
-                    />
-                    <div style={{
-                      padding: '8px',
-                      fontSize: '12px',
-                      textAlign: 'center',
-                      color: themeColors.text,
-                      background: themeColors.surface,
-                    }}>
-                      {name}
-                    </div>
-                  </div>
-                ))
+                          setSketchModalOpen(false)
+                          setCurrentSketchNodeId(null)
+                        }}
+                      >
+                        <img
+                          key={`img-${uniqueKey}`}
+                          src={`/sketchs/men/${encodeURIComponent(selectedMenCategory)}/${encodeURIComponent(imageName)}`}
+                          alt={displayName}
+                          loading="lazy"
+                          style={{
+                            width: '100%',
+                            height: 'auto',
+                            display: 'block',
+                          }}
+                          onError={(e) => {
+                            // 이미지 로드 실패 시 플레이스홀더 표시
+                            const imagePath = `/sketchs/men/${encodeURIComponent(selectedMenCategory)}/${encodeURIComponent(imageName)}`
+                            console.error('이미지 로드 실패:', {
+                              imageName,
+                              selectedMenCategory,
+                              encodedCategory: encodeURIComponent(selectedMenCategory),
+                              encodedImageName: encodeURIComponent(imageName),
+                              fullPath: imagePath
+                            })
+                            e.currentTarget.style.display = 'none'
+                            const parent = e.currentTarget.parentElement
+                            if (parent) {
+                              const errorDiv = document.createElement('div')
+                              errorDiv.style.cssText = `padding: 40px; text-align: center; color: ${themeColors.textSecondary}`
+                              errorDiv.textContent = `${displayName} (로드 실패)`
+                              parent.innerHTML = ''
+                              parent.appendChild(errorDiv)
+                            }
+                          }}
+                        />
+                        <div style={{
+                          padding: '8px',
+                          fontSize: '12px',
+                          textAlign: 'center',
+                          color: themeColors.text,
+                          background: themeColors.surface,
+                        }}>
+                          {displayName}
+                        </div>
+                      </div>
+                    )
+                  })
+                })()
               ) : (
                 // 여성 신발 이미지들 (선택된 카테고리에 따라)
                 (() => {
