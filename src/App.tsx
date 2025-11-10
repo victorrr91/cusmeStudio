@@ -71,6 +71,10 @@ function MyToolbar() {
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [materialModalOpen, setMaterialModalOpen] = useState(false)
   const [currentMaterialNodeId, setCurrentMaterialNodeId] = useState<string | null>(null)
+  const [sketchModalOpen, setSketchModalOpen] = useState(false)
+  const [currentSketchNodeId, setCurrentSketchNodeId] = useState<string | null>(null)
+  const [selectedSketchCategory, setSelectedSketchCategory] = useState<'men' | 'women'>('men')
+  const [selectedWomenCategory, setSelectedWomenCategory] = useState<string>('boots')
 
   // 다크모드 감지
   useEffect(() => {
@@ -1021,7 +1025,7 @@ function MyToolbar() {
   // Gemini API를 통한 이미지 생성
   const executeNanobanana = async (nodeId: string, imageUrl: string | null, prompt: string) => {
     // API 키
-    const apiKey = 'AIzaSyB_byYEb2AsNw6j9_jJL0oqC-uteE19eBk'
+    const apiKey = 'AIzaSyCB0ySFWZzTUc0mdoZBUv3W7lah27iH1TM'
 
     // 로딩 상태 설정
     setNanobananaNodes(prev => {
@@ -1310,10 +1314,9 @@ function MyToolbar() {
   }
 
   const handleNodeFileChoose = (nodeId: string) => {
-    setCurrentUploadNodeId(nodeId)
-    if (!nodeFileInputRef.current) return
-    nodeFileInputRef.current.value = ''
-    nodeFileInputRef.current.click()
+    // 스케치 이미지 선택 모달 열기
+    setCurrentSketchNodeId(nodeId)
+    setSketchModalOpen(true)
   }
 
   const handleNodeFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2187,6 +2190,344 @@ function MyToolbar() {
             fill="none"
           />
         </svg>
+      )}
+
+      {/* 스케치 이미지 선택 모달 */}
+      {sketchModalOpen && (
+        <>
+          {/* 모달 배경 (외부 클릭 시 닫기) */}
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1199,
+              pointerEvents: 'auto',
+              background: 'rgba(0, 0, 0, 0.5)',
+            }}
+            onClick={() => {
+              setSketchModalOpen(false)
+              setCurrentSketchNodeId(null)
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              zIndex: 1200,
+              pointerEvents: 'auto',
+              background: themeColors.background,
+              border: `1px solid ${themeColors.border}`,
+              borderRadius: 12,
+              padding: '24px',
+              boxShadow: isDarkMode ? '0 8px 24px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.2)',
+              minWidth: '600px',
+              maxWidth: '900px',
+              maxHeight: '80vh',
+              overflow: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ 
+              marginBottom: '20px', 
+              fontWeight: 'bold', 
+              fontSize: '18px', 
+              color: themeColors.text,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <span>신발 스케치 선택</span>
+              <button
+                onClick={() => {
+                  setSketchModalOpen(false)
+                  setCurrentSketchNodeId(null)
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: themeColors.text,
+                  cursor: 'pointer',
+                  fontSize: '24px',
+                  lineHeight: 1,
+                  padding: 0,
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '4px',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = themeColors.buttonHover
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* 카테고리 선택 탭 */}
+            <div style={{ 
+              display: 'flex', 
+              gap: '8px', 
+              marginBottom: '20px',
+              borderBottom: `1px solid ${themeColors.border}`,
+            }}>
+              <button
+                onClick={() => setSelectedSketchCategory('men')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: selectedSketchCategory === 'men' ? '2px solid #007acc' : '2px solid transparent',
+                  background: 'transparent',
+                  color: selectedSketchCategory === 'men' ? themeColors.text : themeColors.textSecondary,
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: selectedSketchCategory === 'men' ? 'bold' : 'normal',
+                }}
+              >
+                남성
+              </button>
+              <button
+                onClick={() => setSelectedSketchCategory('women')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: selectedSketchCategory === 'women' ? '2px solid #007acc' : '2px solid transparent',
+                  background: 'transparent',
+                  color: selectedSketchCategory === 'women' ? themeColors.text : themeColors.textSecondary,
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: selectedSketchCategory === 'women' ? 'bold' : 'normal',
+                }}
+              >
+                여성
+              </button>
+            </div>
+
+            {/* 여성 카테고리 하위 선택 (여성 선택 시에만 표시) */}
+            {selectedSketchCategory === 'women' && (
+              <div style={{ 
+                display: 'flex', 
+                gap: '8px', 
+                marginBottom: '20px',
+                flexWrap: 'wrap',
+              }}>
+                {['boots', 'flats', 'heels', 'loafers', 'sandal', 'sneakers'].map((category) => (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedWomenCategory(category)}
+                    style={{
+                      padding: '6px 12px',
+                      border: `1px solid ${selectedWomenCategory === category ? '#007acc' : themeColors.border}`,
+                      borderRadius: 6,
+                      background: selectedWomenCategory === category ? '#007acc' : themeColors.buttonBg,
+                      color: selectedWomenCategory === category ? 'white' : themeColors.text,
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                    }}
+                  >
+                    {category === 'boots' ? '부츠' :
+                     category === 'flats' ? '플랫' :
+                     category === 'heels' ? '힐' :
+                     category === 'loafers' ? '로퍼' :
+                     category === 'sandal' ? '샌들' :
+                     '스니커즈'}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* 이미지 그리드 */}
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+              gap: '16px',
+            }}>
+              {selectedSketchCategory === 'men' ? (
+                // 남성 신발 이미지들
+                ['더비', '로퍼', '몽크스트랩', '보트슈즈', '옥스포드', '테슬로퍼', '플레인토'].map((name) => (
+                  <div
+                    key={name}
+                    style={{
+                      border: `1px solid ${themeColors.border}`,
+                      borderRadius: 8,
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      background: themeColors.surface,
+                      transition: 'transform 0.2s, box-shadow 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'scale(1.05)'
+                      e.currentTarget.style.boxShadow = isDarkMode 
+                        ? '0 4px 12px rgba(0,0,0,0.5)' 
+                        : '0 4px 12px rgba(0,0,0,0.15)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)'
+                      e.currentTarget.style.boxShadow = 'none'
+                    }}
+                    onClick={() => {
+                      if (currentSketchNodeId) {
+                        const imagePath = `/sketchs/men/${name}.png`
+                        // 이미지 URL 생성 (public 폴더의 이미지 사용)
+                        setImageNodes(prev => {
+                          const updated = new Map(prev)
+                          const current = prev.get(currentSketchNodeId) || { 
+                            imageUrl: null, 
+                            materialImageUrl: null,
+                            materialImagePosition: { x: 0, y: 0 },
+                            materialImageSize: { width: 100, height: 100 }
+                          }
+                          // 기존 이미지 URL 해제
+                          if (current.imageUrl && current.imageUrl.startsWith('blob:')) {
+                            URL.revokeObjectURL(current.imageUrl)
+                          }
+                          updated.set(currentSketchNodeId, { 
+                            ...current, 
+                            imageUrl: imagePath
+                          })
+                          return updated
+                        })
+                      }
+                      setSketchModalOpen(false)
+                      setCurrentSketchNodeId(null)
+                    }}
+                  >
+                    <img
+                      src={`/sketchs/men/${name}.png`}
+                      alt={name}
+                      style={{
+                        width: '100%',
+                        height: 'auto',
+                        display: 'block',
+                      }}
+                      onError={(e) => {
+                        // 이미지 로드 실패 시 플레이스홀더 표시
+                        e.currentTarget.style.display = 'none'
+                        const parent = e.currentTarget.parentElement
+                        if (parent) {
+                          parent.innerHTML = `<div style="padding: 40px; text-align: center; color: ${themeColors.textSecondary}">${name}</div>`
+                        }
+                      }}
+                    />
+                    <div style={{
+                      padding: '8px',
+                      fontSize: '12px',
+                      textAlign: 'center',
+                      color: themeColors.text,
+                      background: themeColors.surface,
+                    }}>
+                      {name}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                // 여성 신발 이미지들 (선택된 카테고리에 따라)
+                (() => {
+                  const imageCounts: Record<string, number> = {
+                    boots: 3,
+                    flats: 5,
+                    heels: 7, // 1.png, 2.png, 3.png, 메리제인.png, 뮬.png, 슬릭백.png, 펌프스.png
+                    loafers: 5,
+                    sandal: 4,
+                    sneakers: 1,
+                  }
+                  const count = imageCounts[selectedWomenCategory] || 0
+                  const heelsSpecialNames = ['메리제인', '뮬', '슬릭백', '펌프스']
+                  
+                  return Array.from({ length: count }, (_, i) => {
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          border: `1px solid ${themeColors.border}`,
+                          borderRadius: 8,
+                          overflow: 'hidden',
+                          cursor: 'pointer',
+                          background: themeColors.surface,
+                          transition: 'transform 0.2s, box-shadow 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'scale(1.05)'
+                          e.currentTarget.style.boxShadow = isDarkMode 
+                            ? '0 4px 12px rgba(0,0,0,0.5)' 
+                            : '0 4px 12px rgba(0,0,0,0.15)'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'scale(1)'
+                          e.currentTarget.style.boxShadow = 'none'
+                        }}
+                        onClick={() => {
+                          if (currentSketchNodeId) {
+                            const imagePath = selectedWomenCategory === 'heels' && i >= 3
+                              ? `/sketchs/women/${selectedWomenCategory}/${heelsSpecialNames[i - 3]}.png`
+                              : `/sketchs/women/${selectedWomenCategory}/${i + 1}.png`
+                            // 이미지 URL 생성
+                            setImageNodes(prev => {
+                              const updated = new Map(prev)
+                              const current = prev.get(currentSketchNodeId) || { 
+                                imageUrl: null, 
+                                materialImageUrl: null,
+                                materialImagePosition: { x: 0, y: 0 },
+                                materialImageSize: { width: 100, height: 100 }
+                              }
+                              // 기존 이미지 URL 해제
+                              if (current.imageUrl && current.imageUrl.startsWith('blob:')) {
+                                URL.revokeObjectURL(current.imageUrl)
+                              }
+                              updated.set(currentSketchNodeId, { 
+                                ...current, 
+                                imageUrl: imagePath
+                              })
+                              return updated
+                            })
+                          }
+                          setSketchModalOpen(false)
+                          setCurrentSketchNodeId(null)
+                        }}
+                      >
+                        <img
+                          src={selectedWomenCategory === 'heels' && i >= 3
+                            ? `/sketchs/women/${selectedWomenCategory}/${heelsSpecialNames[i - 3]}.png`
+                            : `/sketchs/women/${selectedWomenCategory}/${i + 1}.png`}
+                          alt={`${selectedWomenCategory} ${i + 1}`}
+                          style={{
+                            width: '100%',
+                            height: 'auto',
+                            display: 'block',
+                          }}
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none'
+                            const parent = e.currentTarget.parentElement
+                            if (parent) {
+                              parent.innerHTML = `<div style="padding: 40px; text-align: center; color: ${themeColors.textSecondary}">${selectedWomenCategory} ${i + 1}</div>`
+                            }
+                          }}
+                        />
+                        <div style={{
+                          padding: '8px',
+                          fontSize: '12px',
+                          textAlign: 'center',
+                          color: themeColors.text,
+                          background: themeColors.surface,
+                        }}>
+                          {selectedWomenCategory === 'heels' && i >= 3
+                            ? heelsSpecialNames[i - 3]
+                            : `${selectedWomenCategory} ${i + 1}`}
+                        </div>
+                      </div>
+                    )
+                  })
+                })()
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {/* 부자재 모달 */}
