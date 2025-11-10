@@ -80,6 +80,7 @@ function MyToolbar() {
   const [selectedSketchCategory, setSelectedSketchCategory] = useState<'men' | 'women'>('men')
   const [selectedMenCategory, setSelectedMenCategory] = useState<string>('boatShoes')
   const [selectedWomenCategory, setSelectedWomenCategory] = useState<string>('boots')
+  const projectFileInputRef = useRef<HTMLInputElement | null>(null)
 
   // 다크모드 감지
   useEffect(() => {
@@ -1383,6 +1384,163 @@ function MyToolbar() {
     })
   }
 
+  // 프로젝트 저장
+  const saveProject = () => {
+    try {
+      // Tldraw 모든 레코드 가져오기
+      const allRecords = editor.store.allRecords()
+      
+      // 모든 상태를 직렬화 가능한 형태로 변환
+      const projectData = {
+        version: '1.0.0',
+        savedAt: new Date().toISOString(),
+        tldrawRecords: allRecords,
+        nodeOverlays: Array.from(nodeOverlays.entries()),
+        connections: Array.from(connections.entries()),
+        imageNodes: Array.from(imageNodes.entries()).map(([nodeId, nodeData]) => {
+          // blob URL은 저장할 수 없으므로, 이미지가 blob URL인 경우 경고
+          let imageUrl = nodeData.imageUrl
+          if (imageUrl && imageUrl.startsWith('blob:')) {
+            // blob URL은 저장할 수 없으므로 null로 설정
+            imageUrl = null
+          }
+          return [nodeId, { ...nodeData, imageUrl }]
+        }),
+        nanobananaNodes: Array.from(nanobananaNodes.entries()),
+      }
+
+      // JSON으로 변환
+      const jsonString = JSON.stringify(projectData, null, 2)
+      
+      // 파일로 다운로드
+      const blob = new Blob([jsonString], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `project-${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      
+      alert('프로젝트가 저장되었습니다.')
+    } catch (error) {
+      console.error('프로젝트 저장 실패:', error)
+      alert('프로젝트 저장에 실패했습니다.')
+    }
+  }
+
+  // 프로젝트 불러오기
+  const loadProject = async (file: File) => {
+    try {
+      const text = await file.text()
+      const projectData = JSON.parse(text)
+
+      // 버전 확인
+      if (!projectData.version) {
+        alert('지원하지 않는 프로젝트 형식입니다.')
+        return
+      }
+
+      // 확인 메시지
+      if (!confirm('현재 프로젝트를 불러오면 모든 변경사항이 사라집니다. 계속하시겠습니까?')) {
+        return
+      }
+
+      // 기존 blob URL 정리
+      imageNodes.forEach((nodeData) => {
+        if (nodeData.imageUrl && nodeData.imageUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(nodeData.imageUrl)
+        }
+      })
+
+      // Tldraw 레코드 복원
+      if (projectData.tldrawRecords && Array.isArray(projectData.tldrawRecords)) {
+        // 페이지 레코드를 먼저 찾아서 먼저 복원
+        const pageRecords = projectData.tldrawRecords.filter((r: any) => r.typeName === 'page')
+        const otherRecords = projectData.tldrawRecords.filter((r: any) => r.typeName !== 'page')
+        
+        // 기존 레코드 ID 맵 생성
+        const currentRecords = editor.store.allRecords()
+        const savedRecordIds = new Set(projectData.tldrawRecords.map((r: any) => r.id))
+        
+        // 삭제할 레코드 (저장된 파일에 없는 레코드)
+        const recordsToRemove = currentRecords.filter(r => !savedRecordIds.has(r.id))
+        
+        // 페이지 레코드를 먼저 복원 (업데이트 또는 추가)
+        if (pageRecords.length > 0) {
+          editor.store.put(pageRecords)
+        }
+        
+        // 나머지 레코드를 배치로 추가/업데이트
+        if (otherRecords.length > 0) {
+          editor.store.put(otherRecords)
+        }
+        
+        // 삭제할 레코드 처리 (페이지 레코드를 제외한 나머지 먼저 삭제)
+        if (recordsToRemove.length > 0) {
+          const nonPageRecordsToRemove = recordsToRemove.filter(r => r.typeName !== 'page')
+          if (nonPageRecordsToRemove.length > 0) {
+            editor.store.remove(nonPageRecordsToRemove.map(r => r.id))
+          }
+          
+          // 페이지 레코드는 약간의 지연을 두고 삭제 (다른 레코드가 먼저 복원된 후)
+          const pageRecordsToRemove = recordsToRemove.filter(r => r.typeName === 'page')
+          if (pageRecordsToRemove.length > 0) {
+            setTimeout(() => {
+              try {
+                editor.store.remove(pageRecordsToRemove.map(r => r.id))
+              } catch (e) {
+                console.error('페이지 레코드 삭제 실패:', e)
+              }
+            }, 200)
+          }
+        }
+      }
+
+      // 상태 복원
+      if (projectData.nodeOverlays) {
+        setNodeOverlays(new Map(projectData.nodeOverlays))
+      }
+
+      if (projectData.connections) {
+        setConnections(new Map(projectData.connections))
+      }
+
+      if (projectData.imageNodes) {
+        setImageNodes(new Map(projectData.imageNodes))
+      }
+
+      if (projectData.nanobananaNodes) {
+        setNanobananaNodes(new Map(projectData.nanobananaNodes))
+      }
+
+      alert('프로젝트가 불러와졌습니다.')
+    } catch (error) {
+      console.error('프로젝트 불러오기 실패:', error)
+      alert('프로젝트 불러오기에 실패했습니다. 파일 형식을 확인해주세요.')
+    }
+  }
+
+  // 프로젝트 불러오기 핸들러
+  const handleProjectFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    const file = files[0]
+    if (!file.name.endsWith('.json')) {
+      alert('JSON 파일만 불러올 수 있습니다.')
+      return
+    }
+
+    await loadProject(file)
+    
+    // 파일 입력 초기화
+    if (projectFileInputRef.current) {
+      projectFileInputRef.current.value = ''
+    }
+  }
+
   const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0 || !overlay) return
@@ -1593,6 +1751,52 @@ function MyToolbar() {
         >
           ▢
         </button>
+
+        {/* 4) 프로젝트 저장 */}
+        <button
+          onClick={saveProject}
+          aria-label="프로젝트 저장"
+          title="프로젝트 저장"
+          style={{
+            width: 36,
+            height: 36,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid #ccc',
+            borderRadius: 6,
+            background: 'white',
+            cursor: 'pointer',
+            fontSize: 16,
+            lineHeight: 1,
+            userSelect: 'none',
+          }}
+        >
+          💾
+        </button>
+
+        {/* 5) 프로젝트 불러오기 */}
+        <button
+          onClick={() => projectFileInputRef.current?.click()}
+          aria-label="프로젝트 불러오기"
+          title="프로젝트 불러오기"
+          style={{
+            width: 36,
+            height: 36,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid #ccc',
+            borderRadius: 6,
+            background: 'white',
+            cursor: 'pointer',
+            fontSize: 16,
+            lineHeight: 1,
+            userSelect: 'none',
+          }}
+        >
+          📂
+        </button>
       </div>
 
       {/* 숨겨진 파일 입력 (프레임용) */}
@@ -1611,6 +1815,15 @@ function MyToolbar() {
         accept="image/*"
         style={{ display: 'none' }}
         onChange={handleNodeFileSelected}
+      />
+
+      {/* 숨겨진 파일 입력 (프로젝트 불러오기용) */}
+      <input
+        ref={projectFileInputRef}
+        type="file"
+        accept=".json"
+        style={{ display: 'none' }}
+        onChange={handleProjectFileSelected}
       />
 
       {/* 프레임 안 업로드 버튼 (화면 중앙에 오버레이) */}
