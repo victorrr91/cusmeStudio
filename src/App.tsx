@@ -80,6 +80,8 @@ function MyToolbar() {
   const [selectedSketchCategory, setSelectedSketchCategory] = useState<'men' | 'women'>('men')
   const [selectedMenCategory, setSelectedMenCategory] = useState<string>('boatShoes')
   const [selectedWomenCategory, setSelectedWomenCategory] = useState<string>('boots')
+  const [imageModalOpen, setImageModalOpen] = useState(false)
+  const [modalImageUrl, setModalImageUrl] = useState<string | null>(null)
   const projectFileInputRef = useRef<HTMLInputElement | null>(null)
 
   // 다크모드 감지
@@ -825,34 +827,42 @@ function MyToolbar() {
     const updateNanobananaPreviews = async () => {
       // 모든 나노바나나 노드를 순회
       for (const [nanobananaNodeId, nanobananaState] of nanobananaNodes.entries()) {
-        // 연결된 이미지 노드 찾기
+        // 연결된 이미지 노드들의 이미지 URL들을 수집
         const nodeConnections = getNodeConnections(nanobananaNodeId)
         const incomingConnections = nodeConnections.filter(conn => conn.type === 'incoming')
+        const imageUrls: string[] = []
 
-        if (incomingConnections.length > 0) {
-          const connectedNodeId = incomingConnections[0].targetNodeId
+        // 모든 incoming connections를 순회하며 이미지 URL 수집
+        for (const connection of incomingConnections) {
+          const connectedNodeId = connection.targetNodeId
           const connectedNode = editor.getShape(connectedNodeId as any)
 
           // 이미지 노드인지 확인
           if (connectedNode && (connectedNode as any).props?.name === '이미지 노드') {
             // 이미지 노드의 현재 상태 캡처
             const capturedImage = await captureImageNodeState(connectedNodeId)
-
-            // 캡처된 이미지가 기존과 다르면 업데이트
-            if (capturedImage !== nanobananaState.previewImageUrl) {
-              setNanobananaNodes(prev => {
-                const updated = new Map(prev)
-                const current = prev.get(nanobananaNodeId)
-                if (current) {
-                  updated.set(nanobananaNodeId, {
-                    ...current,
-                    previewImageUrl: capturedImage
-                  })
-                }
-                return updated
-              })
+            if (capturedImage) {
+              imageUrls.push(capturedImage)
             }
           }
+        }
+
+        // 수집된 이미지 URL들을 JSON 문자열로 저장 (여러 개 지원)
+        const imageUrlsJson = imageUrls.length > 0 ? JSON.stringify(imageUrls) : null
+
+        // 기존 프리뷰와 다르면 업데이트
+        if (imageUrlsJson !== nanobananaState.previewImageUrl) {
+          setNanobananaNodes(prev => {
+            const updated = new Map(prev)
+            const current = prev.get(nanobananaNodeId)
+            if (current) {
+              updated.set(nanobananaNodeId, {
+                ...current,
+                previewImageUrl: imageUrlsJson
+              })
+            }
+            return updated
+          })
         }
       }
     }
@@ -2464,8 +2474,17 @@ function MyToolbar() {
         const nodeScreenPos = editor.pageToScreen({ x: nodeX, y: nodeY })
         const nodeState = nanobananaNodes.get(nodeId) || { text: '', outputImageUrl: null, isLoading: false, previewImageUrl: null }
         
-        // 연결된 이미지 노드의 프리뷰 이미지 사용
-        const imageUrl = nodeState.previewImageUrl
+        // 연결된 이미지 노드의 프리뷰 이미지들 사용
+        let imageUrls: string[] = []
+        if (nodeState.previewImageUrl) {
+          try {
+            const parsed = JSON.parse(nodeState.previewImageUrl)
+            imageUrls = Array.isArray(parsed) ? parsed : [nodeState.previewImageUrl]
+          } catch (e) {
+            // JSON 파싱 실패 시 기존 방식으로 처리
+            imageUrls = nodeState.previewImageUrl ? [nodeState.previewImageUrl] : []
+          }
+        }
 
         return (
           <div
@@ -2510,7 +2529,14 @@ function MyToolbar() {
                     width: '100%',
                     height: '100%',
                     objectFit: 'contain',
+                    cursor: 'pointer',
                   }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setModalImageUrl(nodeState.outputImageUrl)
+                    setImageModalOpen(true)
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
                 />
               ) : (
                 <span style={{ fontSize: '48px' }}>🖼️</span>
@@ -2533,31 +2559,69 @@ function MyToolbar() {
               )}
             </div>
 
-            {/* 중간: 연결된 이미지 노드의 이미지 */}
-            {imageUrl && (
+            {/* 중간: 연결된 이미지 노드의 이미지들 */}
+            {imageUrls.length > 0 && (
               <div
                 style={{
-                  width: '50px',
-                  height: '50px',
-                  marginBottom: '12px',
-                  border: `1px solid ${themeColors.border}`,
-                  borderRadius: 4,
-                  overflow: 'hidden',
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: themeColors.surface,
+                  flexWrap: 'wrap',
+                  gap: '4px',
+                  marginBottom: '12px',
+                  maxWidth: '100%',
                 }}
               >
-                <img
-                  src={imageUrl}
-                  alt="Source"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                  }}
-                />
+                {imageUrls.slice(0, 6).map((url, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      width: imageUrls.length === 1 ? '60px' : '40px',
+                      height: imageUrls.length === 1 ? '60px' : '40px',
+                      border: `1px solid ${themeColors.border}`,
+                      borderRadius: 4,
+                      overflow: 'hidden',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: themeColors.surface,
+                      cursor: 'pointer',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setModalImageUrl(url)
+                      setImageModalOpen(true)
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <img
+                      src={url}
+                      alt={`Source ${index + 1}`}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                      }}
+                    />
+                  </div>
+                ))}
+                {imageUrls.length > 6 && (
+                  <div
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      border: `1px solid ${themeColors.border}`,
+                      borderRadius: 4,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: themeColors.surface,
+                      color: themeColors.text,
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    +{imageUrls.length - 6}
+                  </div>
+                )}
               </div>
             )}
 
@@ -2593,7 +2657,7 @@ function MyToolbar() {
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  executeNanobanana(nodeId, imageUrl, nodeState.text)
+                  executeNanobanana(nodeId, imageUrls.length > 0 ? imageUrls[0] : null, nodeState.text)
                 }}
                 disabled={nodeState.isLoading}
                 style={{
@@ -3528,6 +3592,57 @@ function MyToolbar() {
             </button>
           </div>
         </div>
+        </>
+      )}
+
+      {/* 큰 이미지 모달 */}
+      {imageModalOpen && modalImageUrl && (
+        <>
+          {/* 모달 배경 (외부 클릭 시 닫기) */}
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1300,
+              pointerEvents: 'auto',
+              background: 'rgba(0, 0, 0, 0.8)',
+            }}
+            onClick={() => {
+              setImageModalOpen(false)
+              setModalImageUrl(null)
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              zIndex: 1301,
+              pointerEvents: 'auto',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            onClick={() => {
+              setImageModalOpen(false)
+              setModalImageUrl(null)
+            }}
+          >
+            <img
+              src={modalImageUrl}
+              alt="Large view"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain',
+                borderRadius: '8px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              }}
+            />
+          </div>
         </>
       )}
     </>
