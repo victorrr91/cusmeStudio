@@ -58,15 +58,19 @@ function MyToolbar() {
     fromNodeId: null,
   })
   const [nanobananaNodes, setNanobananaNodes] = useState<Map<string, { text: string; outputImageUrl: string | null; isLoading: boolean }>>(new Map())
+  type Material = {
+    id: string
+    url: string
+    position: { x: number; y: number }
+    size: { width: number; height: number }
+  }
   const [imageNodes, setImageNodes] = useState<Map<string, { 
     imageUrl: string | null
-    materialImageUrl: string | null
-    materialImagePosition: { x: number; y: number }
-    materialImageSize: { width: number; height: number }
+    materials: Material[]
   }>>(new Map())
-  const [draggingMaterial, setDraggingMaterial] = useState<{ nodeId: string; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null)
-  const [resizingMaterial, setResizingMaterial] = useState<{ nodeId: string; startX: number; startY: number; startWidth: number; startHeight: number } | null>(null)
-  const [selectedMaterialNodeId, setSelectedMaterialNodeId] = useState<string | null>(null)
+  const [draggingMaterial, setDraggingMaterial] = useState<{ nodeId: string; materialId: string; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null)
+  const [resizingMaterial, setResizingMaterial] = useState<{ nodeId: string; materialId: string; startX: number; startY: number; startWidth: number; startHeight: number } | null>(null)
+  const [selectedMaterial, setSelectedMaterial] = useState<{ nodeId: string; materialId: string } | null>(null)
   const [zoomLevel, setZoomLevel] = useState(1)
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [materialModalOpen, setMaterialModalOpen] = useState(false)
@@ -317,12 +321,15 @@ function MyToolbar() {
       const containerX = nodeScreenPos.x + 12 * zoomLevel
       const containerY = nodeScreenPos.y + 12 * zoomLevel
       
+      const material = imageNodeState.materials.find(m => m.id === draggingMaterial.materialId)
+      if (!material) return
+      
       const newX = ((e.clientX - containerX) / imageAreaWidth) * 100 - draggingMaterial.offsetX
       const newY = ((e.clientY - containerY) / imageAreaHeight) * 100 - draggingMaterial.offsetY
 
       // 경계 체크
-      const maxX = 100 - imageNodeState.materialImageSize.width
-      const maxY = 100 - imageNodeState.materialImageSize.height
+      const maxX = 100 - material.size.width
+      const maxY = 100 - material.size.height
       
       const clampedX = Math.max(0, Math.min(maxX, newX))
       const clampedY = Math.max(0, Math.min(maxY, newY))
@@ -333,7 +340,11 @@ function MyToolbar() {
         if (current) {
           updated.set(draggingMaterial.nodeId, {
             ...current,
-            materialImagePosition: { x: clampedX, y: clampedY }
+            materials: current.materials.map(m => 
+              m.id === draggingMaterial.materialId 
+                ? { ...m, position: { x: clampedX, y: clampedY } }
+                : m
+            )
           })
         }
         return updated
@@ -376,11 +387,14 @@ function MyToolbar() {
       const containerY = nodeScreenPos.y + 12 * zoomLevel
 
       // 리사이즈 핸들 위치 기준으로 크기 계산
+      const material = imageNodeState.materials.find(m => m.id === resizingMaterial.materialId)
+      if (!material) return
+      
       const deltaX = ((e.clientX - resizingMaterial.startX) / imageAreaWidth) * 100
       const deltaY = ((e.clientY - resizingMaterial.startY) / imageAreaHeight) * 100
 
-      const newWidth = Math.max(10, Math.min(100 - imageNodeState.materialImagePosition.x, resizingMaterial.startWidth + deltaX))
-      const newHeight = Math.max(10, Math.min(100 - imageNodeState.materialImagePosition.y, resizingMaterial.startHeight + deltaY))
+      const newWidth = Math.max(10, Math.min(100 - material.position.x, resizingMaterial.startWidth + deltaX))
+      const newHeight = Math.max(10, Math.min(100 - material.position.y, resizingMaterial.startHeight + deltaY))
 
       // 비율 유지 (선택사항 - 필요시 주석 해제)
       // const aspectRatio = resizingMaterial.startWidth / resizingMaterial.startHeight
@@ -392,7 +406,11 @@ function MyToolbar() {
         if (current) {
           updated.set(resizingMaterial.nodeId, {
             ...current,
-            materialImageSize: { width: newWidth, height: newHeight }
+            materials: current.materials.map(m => 
+              m.id === resizingMaterial.materialId 
+                ? { ...m, size: { width: newWidth, height: newHeight } }
+                : m
+            )
           })
         }
         return updated
@@ -427,7 +445,7 @@ function MyToolbar() {
       // 이미지 노드 오버레이 외부를 클릭한 경우에만 선택 해제
       // (부자재 이미지, 리사이즈 핸들, 부자재 버튼을 클릭한 경우는 제외)
       if (!isImageNodeOverlay && !isMaterialImage && !isResizeHandle && !isMaterialButton) {
-        setSelectedMaterialNodeId(null)
+        setSelectedMaterial(null)
       }
     }
 
@@ -735,9 +753,7 @@ function MyToolbar() {
       // Initialize image node state
       setImageNodes(prev => new Map(prev).set(nodeId, { 
         imageUrl: null, 
-        materialImageUrl: null,
-        materialImagePosition: { x: 0, y: 0 },
-        materialImageSize: { width: 100, height: 100 }
+        materials: []
       }))
     }, 50)
   }
@@ -919,12 +935,10 @@ function MyToolbar() {
     return null
   }
 
-  // 두 이미지를 합치는 함수 (스케치 이미지 + 부자재 이미지)
+  // 여러 이미지를 합치는 함수 (스케치 이미지 + 여러 부자재 이미지)
   const combineImages = async (
     sketchImageUrl: string | null,
-    materialImageUrl: string | null,
-    materialPosition: { x: number; y: number },
-    materialSize: { width: number; height: number }
+    materials: Material[]
   ): Promise<string | null> => {
     if (!sketchImageUrl) return null
 
@@ -947,58 +961,8 @@ function MyToolbar() {
         // 스케치 이미지 그리기 (배경)
         ctx.drawImage(sketchImg, 0, 0)
 
-        // 부자재 이미지가 있으면 오버레이로 그리기
-        if (materialImageUrl) {
-          const materialImg = new Image()
-          materialImg.crossOrigin = 'anonymous'
-          
-          materialImg.onload = () => {
-            // 부자재 이미지의 실제 크기 계산 (퍼센트를 픽셀로 변환)
-            const materialWidth = (canvas.width * materialSize.width) / 100
-            const materialHeight = (canvas.height * materialSize.height) / 100
-            const materialX = (canvas.width * materialPosition.x) / 100
-            const materialY = (canvas.height * materialPosition.y) / 100
-
-            // 부자재 이미지 그리기
-            ctx.drawImage(materialImg, materialX, materialY, materialWidth, materialHeight)
-
-            // 합쳐진 이미지를 base64로 변환
-            canvas.toBlob((blob) => {
-              if (!blob) {
-                reject(new Error('이미지 합치기 실패'))
-                return
-              }
-              const reader = new FileReader()
-              reader.onloadend = () => {
-                const base64 = reader.result as string
-                // data:image/...;base64, 부분 제거
-                resolve(base64.split(',')[1])
-              }
-              reader.onerror = reject
-              reader.readAsDataURL(blob)
-            }, 'image/jpeg', 0.95)
-          }
-
-          materialImg.onerror = () => {
-            // 부자재 이미지 로드 실패 시 스케치 이미지만 반환
-            canvas.toBlob((blob) => {
-              if (!blob) {
-                reject(new Error('이미지 변환 실패'))
-                return
-              }
-              const reader = new FileReader()
-              reader.onloadend = () => {
-                const base64 = reader.result as string
-                resolve(base64.split(',')[1])
-              }
-              reader.onerror = reject
-              reader.readAsDataURL(blob)
-            }, 'image/jpeg', 0.95)
-          }
-
-          materialImg.src = materialImageUrl
-        } else {
-          // 부자재 이미지가 없으면 스케치 이미지만 반환
+        // 부자재 이미지가 없으면 스케치 이미지만 반환
+        if (materials.length === 0) {
           canvas.toBlob((blob) => {
             if (!blob) {
               reject(new Error('이미지 변환 실패'))
@@ -1012,7 +976,61 @@ function MyToolbar() {
             reader.onerror = reject
             reader.readAsDataURL(blob)
           }, 'image/jpeg', 0.95)
+          return
         }
+
+        // 모든 부자재 이미지를 순차적으로 로드하고 그리기
+        let loadedCount = 0
+        const materialImages: { img: HTMLImageElement; material: Material }[] = []
+
+        const drawAllMaterials = () => {
+          // 모든 부자재 이미지 그리기
+          materialImages.forEach(({ img, material }) => {
+            const materialWidth = (canvas.width * material.size.width) / 100
+            const materialHeight = (canvas.height * material.size.height) / 100
+            const materialX = (canvas.width * material.position.x) / 100
+            const materialY = (canvas.height * material.position.y) / 100
+            ctx.drawImage(img, materialX, materialY, materialWidth, materialHeight)
+          })
+
+          // 합쳐진 이미지를 base64로 변환
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              reject(new Error('이미지 합치기 실패'))
+              return
+            }
+            const reader = new FileReader()
+            reader.onloadend = () => {
+              const base64 = reader.result as string
+              resolve(base64.split(',')[1])
+            }
+            reader.onerror = reject
+            reader.readAsDataURL(blob)
+          }, 'image/jpeg', 0.95)
+        }
+
+        materials.forEach((material) => {
+          const materialImg = new Image()
+          materialImg.crossOrigin = 'anonymous'
+          
+          materialImg.onload = () => {
+            materialImages.push({ img: materialImg, material })
+            loadedCount++
+            if (loadedCount === materials.length) {
+              drawAllMaterials()
+            }
+          }
+
+          materialImg.onerror = () => {
+            // 부자재 이미지 로드 실패 시에도 계속 진행 (다른 이미지는 그리기)
+            loadedCount++
+            if (loadedCount === materials.length) {
+              drawAllMaterials()
+            }
+          }
+
+          materialImg.src = material.url
+        })
       }
 
       sketchImg.onerror = () => {
@@ -1045,9 +1063,7 @@ function MyToolbar() {
         const incomingConnections = nodeConnections.filter(conn => conn.type === 'incoming')
         
         let sketchImageUrl: string | null = imageUrl
-        let materialImageUrl: string | null = null
-        let materialPosition = { x: 0, y: 0 }
-        let materialSize = { width: 100, height: 100 }
+        let materials: Material[] = []
 
         if (incomingConnections.length > 0) {
           const connectedNodeId = incomingConnections[0].targetNodeId
@@ -1058,19 +1074,15 @@ function MyToolbar() {
             const imageNodeState = imageNodes.get(connectedNodeId)
             if (imageNodeState) {
               sketchImageUrl = imageNodeState.imageUrl
-              materialImageUrl = imageNodeState.materialImageUrl
-              materialPosition = imageNodeState.materialImagePosition
-              materialSize = imageNodeState.materialImageSize
+              materials = imageNodeState.materials || []
             }
           }
         }
 
-        // 두 이미지를 합쳐서 base64로 변환
+        // 여러 이미지를 합쳐서 base64로 변환
         imageBase64 = await combineImages(
           sketchImageUrl,
-          materialImageUrl,
-          materialPosition,
-          materialSize
+          materials
         )
       }
 
@@ -1340,14 +1352,12 @@ function MyToolbar() {
       // 이미지 파일을 URL로 변환하여 저장
       const imageUrl = URL.createObjectURL(file)
       
-      // 이미지 노드 상태에 이미지 URL 저장 (기존 materialImageUrl, position, size 유지)
+      // 이미지 노드 상태에 이미지 URL 저장 (기존 materials 유지)
       setImageNodes(prev => {
         const updated = new Map(prev)
         const current = prev.get(currentUploadNodeId) || { 
           imageUrl: null, 
-          materialImageUrl: null,
-          materialImagePosition: { x: 0, y: 0 },
-          materialImageSize: { width: 100, height: 100 }
+          materials: []
         }
         updated.set(currentUploadNodeId, { ...current, imageUrl })
         return updated
@@ -1706,9 +1716,7 @@ function MyToolbar() {
           const nodeScreenPos = editor.pageToScreen({ x: nodeX, y: nodeY })
           const imageNodeState = imageNodes.get(nodeId) || { 
             imageUrl: null, 
-            materialImageUrl: null,
-            materialImagePosition: { x: 0, y: 0 },
-            materialImageSize: { width: 100, height: 100 }
+            materials: []
           }
 
         return (
@@ -1767,94 +1775,144 @@ function MyToolbar() {
                       left: 0,
                     }}
                   />
-                  {/* 부자재 이미지 (오버레이) - 드래그 및 리사이즈 가능 */}
-                  {imageNodeState.materialImageUrl && (
-                    <div
-                      data-material-image
-                      style={{
-                        position: 'absolute',
-                        left: `${imageNodeState.materialImagePosition.x}%`,
-                        top: `${imageNodeState.materialImagePosition.y}%`,
-                        width: `${imageNodeState.materialImageSize.width}%`,
-                        height: `${imageNodeState.materialImageSize.height}%`,
-                        zIndex: 2,
-                        cursor: draggingMaterial?.nodeId === nodeId ? 'grabbing' : (selectedMaterialNodeId === nodeId || draggingMaterial?.nodeId === nodeId || resizingMaterial?.nodeId === nodeId ? 'grab' : 'pointer'),
-                        border: (selectedMaterialNodeId === nodeId || draggingMaterial?.nodeId === nodeId || resizingMaterial?.nodeId === nodeId) ? '2px solid #007acc' : 'none',
-                        borderRadius: 4,
-                        boxSizing: 'border-box',
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        // 클릭 시 항상 선택 상태로 설정
-                        setSelectedMaterialNodeId(nodeId)
-                      }}
-                      onMouseDown={(e) => {
-                        e.stopPropagation()
-                        // 리사이즈 핸들이 아닐 때만 드래그 시작
-                        if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'IMG') {
-                          const containerRect = e.currentTarget.parentElement?.getBoundingClientRect()
-                          if (containerRect) {
-                            const offsetX = ((e.clientX - containerRect.left) / containerRect.width) * 100 - imageNodeState.materialImagePosition.x
-                            const offsetY = ((e.clientY - containerRect.top) / containerRect.height) * 100 - imageNodeState.materialImagePosition.y
-                            setDraggingMaterial({
-                              nodeId,
-                              startX: e.clientX,
-                              startY: e.clientY,
-                              offsetX,
-                              offsetY,
-                            })
-                            setSelectedMaterialNodeId(nodeId)
-                          }
-                        }
-                      }}
-                    >
-                      <img
-                        src={imageNodeState.materialImageUrl}
-                        alt="Material"
+                  {/* 부자재 이미지들 (오버레이) - 드래그 및 리사이즈 가능 */}
+                  {imageNodeState.materials.map((material) => {
+                    const isSelected = selectedMaterial?.nodeId === nodeId && selectedMaterial?.materialId === material.id
+                    const isDragging = draggingMaterial?.nodeId === nodeId && draggingMaterial?.materialId === material.id
+                    const isResizing = resizingMaterial?.nodeId === nodeId && resizingMaterial?.materialId === material.id
+                    
+                    return (
+                      <div
+                        key={material.id}
+                        data-material-image
                         style={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'contain',
-                          pointerEvents: 'none',
-                          userSelect: 'none',
+                          position: 'absolute',
+                          left: `${material.position.x}%`,
+                          top: `${material.position.y}%`,
+                          width: `${material.size.width}%`,
+                          height: `${material.size.height}%`,
+                          zIndex: 2,
+                          cursor: isDragging ? 'grabbing' : (isSelected || isDragging || isResizing ? 'grab' : 'pointer'),
+                          border: (isSelected || isDragging || isResizing) ? '2px solid #007acc' : 'none',
+                          borderRadius: 4,
+                          boxSizing: 'border-box',
                         }}
-                        draggable={false}
-                      />
-                      {/* 리사이즈 핸들 (우측 하단) - 선택 상태일 때만 표시 */}
-                      {(selectedMaterialNodeId === nodeId || draggingMaterial?.nodeId === nodeId || resizingMaterial?.nodeId === nodeId) && (
-                        <div
-                          data-resize-handle
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // 클릭 시 항상 선택 상태로 설정
+                          setSelectedMaterial({ nodeId, materialId: material.id })
+                        }}
+                        onMouseDown={(e) => {
+                          e.stopPropagation()
+                          // 리사이즈 핸들이 아닐 때만 드래그 시작
+                          if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'IMG') {
+                            const containerRect = e.currentTarget.parentElement?.getBoundingClientRect()
+                            if (containerRect) {
+                              const offsetX = ((e.clientX - containerRect.left) / containerRect.width) * 100 - material.position.x
+                              const offsetY = ((e.clientY - containerRect.top) / containerRect.height) * 100 - material.position.y
+                              setDraggingMaterial({
+                                nodeId,
+                                materialId: material.id,
+                                startX: e.clientX,
+                                startY: e.clientY,
+                                offsetX,
+                                offsetY,
+                              })
+                              setSelectedMaterial({ nodeId, materialId: material.id })
+                            }
+                          }
+                        }}
+                      >
+                        <img
+                          src={material.url}
+                          alt="Material"
                           style={{
-                            position: 'absolute',
-                            right: -6,
-                            bottom: -6,
-                            width: 12,
-                            height: 12,
-                            background: '#007acc',
-                            border: '2px solid white',
-                            borderRadius: '50%',
-                            cursor: 'nwse-resize',
-                            zIndex: 3,
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'contain',
+                            pointerEvents: 'none',
+                            userSelect: 'none',
                           }}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                          }}
-                          onMouseDown={(e) => {
-                            e.stopPropagation()
-                            e.preventDefault()
-                            setResizingMaterial({
-                              nodeId,
-                              startX: e.clientX,
-                              startY: e.clientY,
-                              startWidth: imageNodeState.materialImageSize.width,
-                              startHeight: imageNodeState.materialImageSize.height,
-                            })
-                            setSelectedMaterialNodeId(nodeId)
-                          }}
+                          draggable={false}
                         />
-                      )}
-                    </div>
-                  )}
+                        {/* 리사이즈 핸들 (우측 하단) - 선택 상태일 때만 표시 */}
+                        {(isSelected || isDragging || isResizing) && (
+                          <div
+                            data-resize-handle
+                            style={{
+                              position: 'absolute',
+                              right: -6,
+                              bottom: -6,
+                              width: 12,
+                              height: 12,
+                              background: '#007acc',
+                              border: '2px solid white',
+                              borderRadius: '50%',
+                              cursor: 'nwse-resize',
+                              zIndex: 3,
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                            }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation()
+                              e.preventDefault()
+                              setResizingMaterial({
+                                nodeId,
+                                materialId: material.id,
+                                startX: e.clientX,
+                                startY: e.clientY,
+                                startWidth: material.size.width,
+                                startHeight: material.size.height,
+                              })
+                              setSelectedMaterial({ nodeId, materialId: material.id })
+                            }}
+                          />
+                        )}
+                        {/* 삭제 버튼 (우측 상단) - 선택 상태일 때만 표시 */}
+                        {(isSelected || isDragging || isResizing) && (
+                          <div
+                            data-delete-handle
+                            style={{
+                              position: 'absolute',
+                              right: -6,
+                              top: -6,
+                              width: 20,
+                              height: 20,
+                              background: '#ff4444',
+                              border: '2px solid white',
+                              borderRadius: '50%',
+                              cursor: 'pointer',
+                              zIndex: 3,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '12px',
+                              color: 'white',
+                              fontWeight: 'bold',
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setImageNodes(prev => {
+                                const updated = new Map(prev)
+                                const current = prev.get(nodeId)
+                                if (current) {
+                                  updated.set(nodeId, {
+                                    ...current,
+                                    materials: current.materials.filter(m => m.id !== material.id)
+                                  })
+                                }
+                                return updated
+                              })
+                              setSelectedMaterial(null)
+                            }}
+                          >
+                            ×
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </>
               ) : (
                 <span style={{ fontSize: '48px' }}>🖼️</span>
@@ -2460,9 +2518,7 @@ function MyToolbar() {
                               const updated = new Map(prev)
                               const current = prev.get(currentSketchNodeId) || { 
                                 imageUrl: null, 
-                                materialImageUrl: null,
-                                materialImagePosition: { x: 0, y: 0 },
-                                materialImageSize: { width: 100, height: 100 }
+                                materials: []
                               }
                               // 기존 이미지 URL 해제
                               if (current.imageUrl && current.imageUrl.startsWith('blob:')) {
@@ -2569,9 +2625,7 @@ function MyToolbar() {
                               const updated = new Map(prev)
                               const current = prev.get(currentSketchNodeId) || { 
                                 imageUrl: null, 
-                                materialImageUrl: null,
-                                materialImagePosition: { x: 0, y: 0 },
-                                materialImageSize: { width: 100, height: 100 }
+                                materials: []
                               }
                               // 기존 이미지 URL 해제
                               if (current.imageUrl && current.imageUrl.startsWith('blob:')) {
@@ -2735,16 +2789,18 @@ function MyToolbar() {
                       const updated = new Map(prev)
                       const current = prev.get(currentMaterialNodeId) || { 
                         imageUrl: null, 
-                        materialImageUrl: null,
-                        materialImagePosition: { x: 0, y: 0 },
-                        materialImageSize: { width: 100, height: 100 }
+                        materials: []
                       }
-                      // 기본 위치는 중앙, 기본 크기는 컨테이너의 50%
+                      // 새로운 material 추가 (기본 위치는 중앙, 기본 크기는 컨테이너의 50%)
+                      const newMaterial: Material = {
+                        id: `material-${Date.now()}-${Math.random()}`,
+                        url: '/button1.png',
+                        position: { x: 25, y: 25 }, // 퍼센트 기준
+                        size: { width: 50, height: 50 } // 퍼센트 기준
+                      }
                       updated.set(currentMaterialNodeId, { 
                         ...current, 
-                        materialImageUrl: '/button1.png',
-                        materialImagePosition: { x: 25, y: 25 }, // 퍼센트 기준
-                        materialImageSize: { width: 50, height: 50 } // 퍼센트 기준
+                        materials: [...current.materials, newMaterial]
                       })
                       return updated
                     })
@@ -2790,16 +2846,18 @@ function MyToolbar() {
                       const updated = new Map(prev)
                       const current = prev.get(currentMaterialNodeId) || { 
                         imageUrl: null, 
-                        materialImageUrl: null,
-                        materialImagePosition: { x: 0, y: 0 },
-                        materialImageSize: { width: 100, height: 100 }
+                        materials: []
                       }
-                      // 기본 위치는 중앙, 기본 크기는 컨테이너의 50%
+                      // 새로운 material 추가 (기본 위치는 중앙, 기본 크기는 컨테이너의 50%)
+                      const newMaterial: Material = {
+                        id: `material-${Date.now()}-${Math.random()}`,
+                        url: '/button2.png',
+                        position: { x: 25, y: 25 }, // 퍼센트 기준
+                        size: { width: 50, height: 50 } // 퍼센트 기준
+                      }
                       updated.set(currentMaterialNodeId, { 
                         ...current, 
-                        materialImageUrl: '/button2.png',
-                        materialImagePosition: { x: 25, y: 25 }, // 퍼센트 기준
-                        materialImageSize: { width: 50, height: 50 } // 퍼센트 기준
+                        materials: [...current.materials, newMaterial]
                       })
                       return updated
                     })
@@ -2963,9 +3021,7 @@ function MyToolbar() {
                     setNodeOverlays(prev => new Map(prev).set(nodeId, newNodeOverlay))
                     setImageNodes(prev => new Map(prev).set(nodeId, { 
                       imageUrl: null, 
-                      materialImageUrl: null,
-                      materialImagePosition: { x: 0, y: 0 },
-                      materialImageSize: { width: 100, height: 100 }
+                      materials: []
                     }))
 
                     // 연결 생성
