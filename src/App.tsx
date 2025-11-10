@@ -57,7 +57,7 @@ function MyToolbar() {
     position: { x: 0, y: 0 },
     fromNodeId: null,
   })
-  const [nanobananaNodes, setNanobananaNodes] = useState<Map<string, { text: string; outputImageUrl: string | null; isLoading: boolean }>>(new Map())
+  const [nanobananaNodes, setNanobananaNodes] = useState<Map<string, { text: string; outputImageUrl: string | null; isLoading: boolean; previewImageUrl: string | null }>>(new Map())
   type Material = {
     id: string
     url: string
@@ -194,6 +194,7 @@ function MyToolbar() {
       delete (window as any).getNodeConnections
     }
   }, [getConnections, getNodeConnections])
+
 
   // nodebasedtest의 drawConnection 함수를 가져옴 (화살표 제거)
   const drawConnection = useCallback((ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number) => {
@@ -394,12 +395,10 @@ function MyToolbar() {
       const deltaX = ((e.clientX - resizingMaterial.startX) / imageAreaWidth) * 100
       const deltaY = ((e.clientY - resizingMaterial.startY) / imageAreaHeight) * 100
 
-      const newWidth = Math.max(10, Math.min(100 - material.position.x, resizingMaterial.startWidth + deltaX))
-      const newHeight = Math.max(10, Math.min(100 - material.position.y, resizingMaterial.startHeight + deltaY))
-
-      // 비율 유지 (선택사항 - 필요시 주석 해제)
-      // const aspectRatio = resizingMaterial.startWidth / resizingMaterial.startHeight
-      // const newHeight = newWidth / aspectRatio
+      // 비율 유지하여 크기 변경
+      const aspectRatio = resizingMaterial.startWidth / resizingMaterial.startHeight
+      const newWidth = Math.max(8, Math.min(100 - material.position.x, resizingMaterial.startWidth + deltaX))
+      const newHeight = Math.max(8, Math.min(100 - material.position.y, newWidth / aspectRatio))
 
       setImageNodes(prev => {
         const updated = new Map(prev)
@@ -646,6 +645,221 @@ function MyToolbar() {
     fileInputRef.current.value = ''
     fileInputRef.current.click()
   }
+
+  // 이미지 노드의 현재 시각적 상태를 캡처하는 함수
+  const captureImageNodeState = useCallback(async (nodeId: string): Promise<string | null> => {
+    try {
+      // 이미지 노드 오버레이 DOM 요소 찾기
+      const imageNodeOverlay = document.querySelector(`[data-image-node-overlay]`) as HTMLElement
+      if (!imageNodeOverlay) {
+        console.warn('Image node overlay not found')
+        return null
+      }
+
+      // 이미지 표시 영역 찾기
+      const imageArea = imageNodeOverlay.querySelector('[data-image-area]') as HTMLElement
+      if (!imageArea) {
+        console.warn('Image area not found')
+        return null
+      }
+
+      // Canvas 생성
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        console.warn('Canvas context not available')
+        return null
+      }
+
+      // 이미지 영역의 크기 설정
+      const rect = imageArea.getBoundingClientRect()
+      canvas.width = rect.width
+      canvas.height = rect.height
+
+      // 배경색 설정 (테마에 맞게)
+      const themeColors = isDarkMode
+        ? { background: '#1e1e1e', surface: '#2d2d2d', placeholder: '#3d3d3d', border: '#404040', borderDashed: '#555' }
+        : { background: '#ffffff', surface: '#f8f8f8', placeholder: '#f0f0f0', border: '#ddd', borderDashed: '#ccc' }
+
+      ctx.fillStyle = themeColors.surface
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      // 이미지 노드 상태 가져오기
+      const imageNodeState = imageNodes.get(nodeId)
+      if (!imageNodeState) {
+        console.warn('Image node state not found')
+        return null
+      }
+
+      // 기본 이미지 그리기
+      if (imageNodeState.imageUrl) {
+        const baseImage = new Image()
+        await new Promise((resolve, reject) => {
+          baseImage.onload = resolve
+          baseImage.onerror = reject
+          baseImage.crossOrigin = 'anonymous'
+          baseImage.src = imageNodeState.imageUrl!
+        })
+
+        ctx.drawImage(baseImage, 0, 0, canvas.width, canvas.height)
+      }
+
+      // 부자재 이미지들 그리기 (오버레이)
+      for (const material of imageNodeState.materials) {
+        const materialImage = new Image()
+        await new Promise((resolve, reject) => {
+          materialImage.onload = resolve
+          materialImage.onerror = reject
+          materialImage.crossOrigin = 'anonymous'
+          materialImage.src = material.url
+        })
+
+        // 퍼센트 위치를 픽셀 위치로 변환
+        const x = (material.position.x / 100) * canvas.width
+        const y = (material.position.y / 100) * canvas.height
+        const width = (material.size.width / 100) * canvas.width
+        const height = (material.size.height / 100) * canvas.height
+
+        ctx.drawImage(materialImage, x, y, width, height)
+      }
+
+      // 캡처된 이미지를 Data URL로 반환
+      return canvas.toDataURL('image/png')
+
+    } catch (error) {
+      console.error('Failed to capture image node state:', error)
+      return null
+    }
+  }, [imageNodes, isDarkMode])
+
+  // PNG 이미지의 여백을 제거하는 함수
+  const trimImage = async (imageUrl: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+
+      img.onload = () => {
+        // Canvas 생성
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Canvas context를 가져올 수 없습니다.'))
+          return
+        }
+
+        canvas.width = img.width
+        canvas.height = img.height
+
+        // 이미지를 Canvas에 그리기
+        ctx.drawImage(img, 0, 0)
+
+        // 이미지 데이터 가져오기
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        const data = imageData.data
+
+        // 실제 콘텐츠 영역 찾기 (bounding box 계산)
+        let minX = canvas.width
+        let minY = canvas.height
+        let maxX = 0
+        let maxY = 0
+
+        // 모든 픽셀을 순회하며 불투명한 픽셀 찾기
+        for (let y = 0; y < canvas.height; y++) {
+          for (let x = 0; x < canvas.width; x++) {
+            const index = (y * canvas.width + x) * 4
+            const alpha = data[index + 3] // Alpha 채널 (0-255)
+
+            // Alpha 값이 10 이상인 픽셀을 콘텐츠로 간주
+            if (alpha > 10) {
+              if (x < minX) minX = x
+              if (x > maxX) maxX = x
+              if (y < minY) minY = y
+              if (y > maxY) maxY = y
+            }
+          }
+        }
+
+        // 콘텐츠가 없는 경우 원본 반환
+        if (minX > maxX || minY > maxY) {
+          resolve(imageUrl)
+          return
+        }
+
+        // 콘텐츠 영역의 크기 계산
+        const contentWidth = maxX - minX + 1
+        const contentHeight = maxY - minY + 1
+
+        // 새로운 Canvas 생성 (콘텐츠 영역만)
+        const trimmedCanvas = document.createElement('canvas')
+        const trimmedCtx = trimmedCanvas.getContext('2d')
+        if (!trimmedCtx) {
+          reject(new Error('Trimmed canvas context를 가져올 수 없습니다.'))
+          return
+        }
+
+        trimmedCanvas.width = contentWidth
+        trimmedCanvas.height = contentHeight
+
+        // 원본 이미지에서 콘텐츠 영역만 잘라내기
+        trimmedCtx.drawImage(
+          img,
+          minX, minY, contentWidth, contentHeight, // 원본에서 잘라낼 영역
+          0, 0, contentWidth, contentHeight      // 새 Canvas에 그릴 영역
+        )
+
+        // 잘라낸 이미지를 Data URL로 변환
+        const trimmedDataUrl = trimmedCanvas.toDataURL('image/png')
+        resolve(trimmedDataUrl)
+      }
+
+      img.onerror = () => {
+        reject(new Error('이미지 로드 실패'))
+      }
+
+      img.src = imageUrl
+    })
+  }
+
+  // 이미지 노드 상태 변경 시 연결된 나노바나나 노드들의 프리뷰 이미지 업데이트
+  useEffect(() => {
+    const updateNanobananaPreviews = async () => {
+      // 모든 나노바나나 노드를 순회
+      for (const [nanobananaNodeId, nanobananaState] of nanobananaNodes.entries()) {
+        // 연결된 이미지 노드 찾기
+        const nodeConnections = getNodeConnections(nanobananaNodeId)
+        const incomingConnections = nodeConnections.filter(conn => conn.type === 'incoming')
+
+        if (incomingConnections.length > 0) {
+          const connectedNodeId = incomingConnections[0].targetNodeId
+          const connectedNode = editor.getShape(connectedNodeId as any)
+
+          // 이미지 노드인지 확인
+          if (connectedNode && (connectedNode as any).props?.name === '이미지 노드') {
+            // 이미지 노드의 현재 상태 캡처
+            const capturedImage = await captureImageNodeState(connectedNodeId)
+
+            // 캡처된 이미지가 기존과 다르면 업데이트
+            if (capturedImage !== nanobananaState.previewImageUrl) {
+              setNanobananaNodes(prev => {
+                const updated = new Map(prev)
+                const current = prev.get(nanobananaNodeId)
+                if (current) {
+                  updated.set(nanobananaNodeId, {
+                    ...current,
+                    previewImageUrl: capturedImage
+                  })
+                }
+                return updated
+              })
+            }
+          }
+        }
+      }
+    }
+
+    // 이미지 노드 상태가 변경될 때마다 프리뷰 업데이트
+    updateNanobananaPreviews()
+  }, [imageNodes, nanobananaNodes, editor, captureImageNodeState, getNodeConnections])
 
   const addImageNode = () => {
     const nodeWidth = 350
@@ -910,7 +1124,7 @@ function MyToolbar() {
       setNodeOverlays(prev => new Map(prev).set(nodeId, newNodeOverlay))
       
       // Store nanobanana node state
-      setNanobananaNodes(prev => new Map(prev).set(nodeId, { text: '', outputImageUrl: null, isLoading: false }))
+      setNanobananaNodes(prev => new Map(prev).set(nodeId, { text: '', outputImageUrl: null, isLoading: false, previewImageUrl: null }))
     }, 50)
   }
 
@@ -1050,7 +1264,7 @@ function MyToolbar() {
     // 로딩 상태 설정
     setNanobananaNodes(prev => {
       const updated = new Map(prev)
-      const current = prev.get(nodeId) || { text: prompt, outputImageUrl: null, isLoading: false }
+      const current = prev.get(nodeId) || { text: prompt, outputImageUrl: null, isLoading: false, previewImageUrl: null }
       updated.set(nodeId, { ...current, isLoading: true })
       return updated
     })
@@ -1311,7 +1525,7 @@ function MyToolbar() {
       // 출력 이미지 URL 저장
       setNanobananaNodes(prev => {
         const updated = new Map(prev)
-        const current = prev.get(nodeId) || { text: prompt, outputImageUrl: null, isLoading: false }
+        const current = prev.get(nodeId) || { text: prompt, outputImageUrl: null, isLoading: false, previewImageUrl: null }
         updated.set(nodeId, { ...current, outputImageUrl, isLoading: false })
         return updated
       })
@@ -1320,7 +1534,7 @@ function MyToolbar() {
       alert(`이미지 생성 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
       setNanobananaNodes(prev => {
         const updated = new Map(prev)
-        const current = prev.get(nodeId) || { text: prompt, outputImageUrl: null, isLoading: false }
+        const current = prev.get(nodeId) || { text: prompt, outputImageUrl: null, isLoading: false, previewImageUrl: null }
         updated.set(nodeId, { ...current, isLoading: false })
         return updated
       })
@@ -2090,8 +2304,8 @@ function MyToolbar() {
                               position: 'absolute',
                               right: -6,
                               top: -6,
-                              width: 20,
-                              height: 20,
+                              width: 17,
+                              height: 17,
                               background: '#ff4444',
                               border: '2px solid white',
                               borderRadius: '50%',
@@ -2100,7 +2314,7 @@ function MyToolbar() {
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              fontSize: '12px',
+                              fontSize: '10px',
                               color: 'white',
                               fontWeight: 'bold',
                             }}
@@ -2248,26 +2462,10 @@ function MyToolbar() {
         const nodeWidth = (nodeShape as any).props?.w || 350
         const nodeHeight = (nodeShape as any).props?.h || 400
         const nodeScreenPos = editor.pageToScreen({ x: nodeX, y: nodeY })
-        const nodeState = nanobananaNodes.get(nodeId) || { text: '', outputImageUrl: null, isLoading: false }
+        const nodeState = nanobananaNodes.get(nodeId) || { text: '', outputImageUrl: null, isLoading: false, previewImageUrl: null }
         
-        // 연결된 이미지 노드 찾기
-        const nodeConnections = getNodeConnections(nodeId)
-        const incomingConnections = nodeConnections.filter(conn => conn.type === 'incoming')
-        
-        // 연결된 이미지 노드의 이미지 URL 가져오기
-        let imageUrl: string | null = null
-        if (incomingConnections.length > 0) {
-          const connectedNodeId = incomingConnections[0].targetNodeId
-          const connectedNode = editor.getShape(connectedNodeId as any)
-          
-          // 이미지 노드인지 확인
-          if (connectedNode && (connectedNode as any).props?.name === '이미지 노드') {
-            const imageNodeState = imageNodes.get(connectedNodeId)
-            if (imageNodeState?.imageUrl) {
-              imageUrl = imageNodeState.imageUrl
-            }
-          }
-        }
+        // 연결된 이미지 노드의 프리뷰 이미지 사용
+        const imageUrl = nodeState.previewImageUrl
 
         return (
           <div
@@ -2370,7 +2568,7 @@ function MyToolbar() {
                 onChange={(e) => {
                   setNanobananaNodes(prev => {
                     const updated = new Map(prev)
-                    const current = prev.get(nodeId) || { text: '', outputImageUrl: null, isLoading: false }
+                    const current = prev.get(nodeId) || { text: '', outputImageUrl: null, isLoading: false, previewImageUrl: null }
                     updated.set(nodeId, { ...current, text: e.target.value })
                     return updated
                   })
@@ -2996,27 +3194,53 @@ function MyToolbar() {
                   e.currentTarget.style.transform = 'scale(1)'
                   e.currentTarget.style.boxShadow = 'none'
                 }}
-                onClick={() => {
+                onClick={async () => {
                   if (currentMaterialNodeId) {
-                    setImageNodes(prev => {
-                      const updated = new Map(prev)
-                      const current = prev.get(currentMaterialNodeId) || { 
-                        imageUrl: null, 
-                        materials: []
-                      }
-                      // 새로운 material 추가 (기본 위치는 중앙, 기본 크기는 컨테이너의 50%)
-                      const newMaterial: Material = {
-                        id: `material-${Date.now()}-${Math.random()}`,
-                        url: '/button1.png',
-                        position: { x: 25, y: 25 }, // 퍼센트 기준
-                        size: { width: 50, height: 50 } // 퍼센트 기준
-                      }
-                      updated.set(currentMaterialNodeId, { 
-                        ...current, 
-                        materials: [...current.materials, newMaterial]
+                    try {
+                      // PNG 이미지의 여백 제거
+                      const trimmedUrl = await trimImage('/button1.png')
+
+                      setImageNodes(prev => {
+                        const updated = new Map(prev)
+                        const current = prev.get(currentMaterialNodeId) || {
+                          imageUrl: null,
+                          materials: []
+                        }
+                        // 새로운 material 추가 (기본 위치는 중앙, 기본 크기는 50px)
+                        const newMaterial: Material = {
+                          id: `material-${Date.now()}-${Math.random()}`,
+                          url: trimmedUrl,
+                          position: { x: 25, y: 25 }, // 퍼센트 기준
+                          size: { width: 15, height: 15 } // 퍼센트 기준 (50px에 해당)
+                        }
+                        updated.set(currentMaterialNodeId, {
+                          ...current,
+                          materials: [...current.materials, newMaterial]
+                        })
+                        return updated
                       })
-                      return updated
-                    })
+                    } catch (error) {
+                      console.error('이미지 여백 제거 실패:', error)
+                      // 여백 제거 실패 시 원본 이미지 사용
+                      setImageNodes(prev => {
+                        const updated = new Map(prev)
+                        const current = prev.get(currentMaterialNodeId) || {
+                          imageUrl: null,
+                          materials: []
+                        }
+                        const newMaterial: Material = {
+                          id: `material-${Date.now()}-${Math.random()}`,
+                          url: '/button1.png',
+                          position: { x: 25, y: 25 },
+                          size: { width: 15, height: 15 } // 퍼센트 기준 (50px에 해당)
+                        }
+                        updated.set(currentMaterialNodeId, {
+                          ...current,
+                          materials: [...current.materials, newMaterial]
+                        })
+                        return updated
+                      })
+                    }
                   }
                   setMaterialModalOpen(false)
                   setCurrentMaterialNodeId(null)
@@ -3053,27 +3277,53 @@ function MyToolbar() {
                   e.currentTarget.style.transform = 'scale(1)'
                   e.currentTarget.style.boxShadow = 'none'
                 }}
-                onClick={() => {
+                onClick={async () => {
                   if (currentMaterialNodeId) {
-                    setImageNodes(prev => {
-                      const updated = new Map(prev)
-                      const current = prev.get(currentMaterialNodeId) || { 
-                        imageUrl: null, 
-                        materials: []
-                      }
-                      // 새로운 material 추가 (기본 위치는 중앙, 기본 크기는 컨테이너의 50%)
-                      const newMaterial: Material = {
-                        id: `material-${Date.now()}-${Math.random()}`,
-                        url: '/button2.png',
-                        position: { x: 25, y: 25 }, // 퍼센트 기준
-                        size: { width: 50, height: 50 } // 퍼센트 기준
-                      }
-                      updated.set(currentMaterialNodeId, { 
-                        ...current, 
-                        materials: [...current.materials, newMaterial]
+                    try {
+                      // PNG 이미지의 여백 제거
+                      const trimmedUrl = await trimImage('/button2.png')
+
+                      setImageNodes(prev => {
+                        const updated = new Map(prev)
+                        const current = prev.get(currentMaterialNodeId) || {
+                          imageUrl: null,
+                          materials: []
+                        }
+                        // 새로운 material 추가 (기본 위치는 중앙, 기본 크기는 50px)
+                        const newMaterial: Material = {
+                          id: `material-${Date.now()}-${Math.random()}`,
+                          url: trimmedUrl,
+                          position: { x: 25, y: 25 }, // 퍼센트 기준
+                          size: { width: 15, height: 15 } // 퍼센트 기준 (50px에 해당)
+                        }
+                        updated.set(currentMaterialNodeId, {
+                          ...current,
+                          materials: [...current.materials, newMaterial]
+                        })
+                        return updated
                       })
-                      return updated
-                    })
+                    } catch (error) {
+                      console.error('이미지 여백 제거 실패:', error)
+                      // 여백 제거 실패 시 원본 이미지 사용
+                      setImageNodes(prev => {
+                        const updated = new Map(prev)
+                        const current = prev.get(currentMaterialNodeId) || {
+                          imageUrl: null,
+                          materials: []
+                        }
+                        const newMaterial: Material = {
+                          id: `material-${Date.now()}-${Math.random()}`,
+                          url: '/button2.png',
+                          position: { x: 25, y: 25 },
+                          size: { width: 15, height: 15 } // 퍼센트 기준 (50px에 해당)
+                        }
+                        updated.set(currentMaterialNodeId, {
+                          ...current,
+                          materials: [...current.materials, newMaterial]
+                        })
+                        return updated
+                      })
+                    }
                   }
                   setMaterialModalOpen(false)
                   setCurrentMaterialNodeId(null)
