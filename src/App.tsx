@@ -1045,7 +1045,7 @@ function MyToolbar() {
   // Gemini API를 통한 이미지 생성
   const executeNanobanana = async (nodeId: string, imageUrl: string | null, prompt: string) => {
     // API 키
-    const apiKey = 'AIzaSyCB0ySFWZzTUc0mdoZBUv3W7lah27iH1TM'
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY
 
     // 로딩 상태 설정
     setNanobananaNodes(prev => {
